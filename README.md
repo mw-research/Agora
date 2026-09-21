@@ -69,6 +69,7 @@ freely; sticky sessions are not needed.
 | `tests/smoke_test.py` | End-to-end test without real model calls |
 | `tests/sicherung_test.py` | Restoring an image on a server with a new key |
 | `k8s/agora.rechner.yaml` | Compute pod plus a NetworkPolicy denying it every way out |
+| `k8s/agora.sicherung.yaml` | Nightly backup as a CronJob, calling the built-in endpoint |
 
 > The source code is German. Only what users read is translated — see
 > *Interface language* below.
@@ -674,6 +675,28 @@ second would leave a long-dead worker holding topics.
 After restoring, the admin is re-created from `AGORA_ADMIN_TOKEN`. Otherwise
 only the token from the image would count — and on a freshly set up server
 nobody would get in at all.
+
+### Nightly and by itself
+
+In the cluster, [`k8s/agora.sicherung.yaml`](k8s/agora.sicherung.yaml) takes
+care of it: a CronJob calls the same endpoint as the button at night and puts
+the image on a PVC. With a password if the secret `agora-geheim` carries a
+`sicherung-passwort` key - then it is encrypted on the store as well. Anything
+older than 30 days is removed.
+
+```bash
+kubectl -n YOUR-NAMESPACE apply -f k8s/agora.sicherung.yaml
+```
+
+> **Otherwise it is theatre:** the store must sit on storage that is itself
+> backed up. On the same node-local class as the database - `microk8s-hostpath`
+> and the like - losing the node loses both. Put a class at `storageClassName`
+> that points at NFS, Ceph or a snapshotted store.
+
+Why not `pg_dump`: a database dump brings the rows back but not the property
+that matters after a break-in - that the image can be restored onto a server
+with a **new** `AGORA_SECRET_KEY`. And it would additionally need the Postgres
+password.
 
 ### Putting a password on it
 

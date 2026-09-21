@@ -69,6 +69,7 @@ Sticky Sessions sind nicht nötig.
 | `tests/smoke_test.py` | End-to-End-Test ohne echte Modellaufrufe |
 | `tests/sicherung_test.py` | Abbild auf einem Server mit neuem Schlüssel einspielen |
 | `k8s/agora.rechner.yaml` | Rechner-Pod samt NetworkPolicy, die ihm jeden Ausgang verbietet |
+| `k8s/agora.sicherung.yaml` | Nächtliche Sicherung als CronJob, ruft den eingebauten Endpunkt |
 
 ---
 
@@ -693,6 +694,29 @@ besetzt.
 Nach dem Einspielen wird der Admin aus `AGORA_ADMIN_TOKEN` neu gesetzt. Sonst
 gälte nur noch das Token aus dem Abbild — und auf einem frisch aufgesetzten
 Server käme niemand mehr hinein.
+
+### Nächtlich und von selbst
+
+Im Cluster nimmt [`k8s/agora.sicherung.yaml`](k8s/agora.sicherung.yaml) das ab:
+ein CronJob ruft nachts denselben Endpunkt wie der Knopf und legt das Abbild
+auf eine PVC. Mit einem Passwort, wenn im Secret `agora-geheim` ein Schlüssel
+`sicherung-passwort` liegt — dann ist es auch auf der Ablage verschlüsselt.
+Ältere als 30 Tage räumt er weg.
+
+```bash
+kubectl -n DEIN-NAMESPACE apply -f k8s/agora.sicherung.yaml
+```
+
+> **Sonst ist es Theater:** die Ablage muss auf Speicher liegen, der selbst
+> gesichert wird. Liegt sie auf derselben knotenlokalen Klasse wie die
+> Datenbank — `microk8s-hostpath` und dergleichen — ist mit dem Knoten beides
+> fort. Trage bei `storageClassName` etwas ein, das auf NFS, Ceph oder eine
+> gesnapshottete Ablage zeigt.
+
+Warum nicht `pg_dump`: ein Datenbankabzug bringt die Zeilen zurück, aber nicht
+die Eigenschaft, die nach einem Einbruch zählt — dass sich das Abbild auf
+einem Server mit **neuem** `AGORA_SECRET_KEY` einspielen lässt. Und er
+bräuchte zusätzlich das Postgres-Passwort.
 
 ### Ein Passwort darauflegen
 

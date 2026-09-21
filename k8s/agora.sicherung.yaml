@@ -1,0 +1,134 @@
+# Regelmaessige Sicherung des Forums - ruft den eingebauten Endpunkt.
+#
+#   kubectl -n DEIN-NAMESPACE apply -f k8s/agora.sicherung.yaml
+#
+# WICHTIG, sonst ist das Theater: die Ablage unten MUSS auf Speicher liegen,
+# der selbst gesichert wird. Liegt sie auf demselben knotenlokalen Speicher
+# wie die Datenbank (microk8s-hostpath und dergleichen), ist mit dem Knoten
+# beides fort - Datenbank und Sicherung. Trage bei storageClassName eine
+# Klasse ein, die auf NFS, Ceph oder eine gesnapshottete Ablage zeigt, oder
+# haenge stattdessen ein NFS-Volume ein.
+#
+# WARUM NICHT pg_dump: der eingebaute Weg liefert ein Abbild, das sich auf
+# einem frisch aufgesetzten Server mit einem NEUEN AGORA_SECRET_KEY
+# einspielen laesst - die Modell-Zugaenge haengen an den PINs der Personen,
+# nicht am Server. Genau das braucht man nach einem Einbruch. Ein
+# Datenbankabzug bringt die Zeilen zurueck, aber nicht diese Eigenschaft,
+# und er braucht zusaetzlich das Postgres-Passwort.
+#
+# Wiederherstellen: Datei herunterladen und in der Oberflaeche unter
+# Personen -> Sicherung einspielen. Oder von Hand:
+#
+#   kubectl -n DEIN-NAMESPACE cp <pod>:/sicherung/agora-<datum>.agora ./abbild
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agora-sicherung
+  labels:
+    app: agora
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+  # HIER ANPASSEN - siehe Kopf. Leer lassen nimmt die Standardklasse des
+  # Clusters, und die ist haeufig genau der knotenlokale Speicher, vor dem
+  # die Sicherung schuetzen soll.
+  # storageClassName: nfs-client
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: agora-sicherung
+  labels:
+    app: agora
+spec:
+  # Nachts um kurz nach drei. Ein Abbild kostet wenig; taeglich ist der
+  # sinnvolle Mindestabstand, weil dazwischen Entstandenes verloren waere.
+  schedule: "7 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+          containers:
+          - name: sichern
+            image: curlimages/curl:8.11.1
+            env:
+            - name: AGORA_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agora-geheim
+                  key: admin-token
+            # Passwort auf dem Abbild. Damit liegt es auch auf der Ablage
+            # verschluesselt. Optional - fehlt der Schluessel im Secret,
+            # bleibt das Abbild ungeschuetzt.
+            - name: ABBILD_PASSWORT
+              valueFrom:
+                secretKeyRef:
+                  name: agora-geheim
+                  key: sicherung-passwort
+                  optional: true
+            # So viele Tage bleiben Abbilder liegen.
+            - name: AUFBEWAHREN_TAGE
+              value: "30"
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -eu
+              datum=$(date -u +%Y-%m-%d-%H%M)
+              if [ -n "${ABBILD_PASSWORT:-}" ]; then
+                ziel="/sicherung/agora-$datum.agora"
+                rumpf="{\"passwort\":\"$ABBILD_PASSWORT\"}"
+              else
+                ziel="/sicherung/agora-$datum.json.gz"
+                rumpf='{"passwort":""}'
+              fi
+
+              echo "Hole Abbild nach $ziel"
+              # --fail: ohne das schriebe curl eine Fehlermeldung in die
+              # Datei und der Job gaelte als gelungen.
+              curl --fail --silent --show-error --max-time 600 \
+                -X POST "http://agora/api/admin/sicherung/erstellen" \
+                -H "X-Agora-Token: $AGORA_ADMIN_TOKEN" \
+                -H "Content-Type: application/json" \
+                -d "$rumpf" \
+                -o "$ziel.teil"
+
+              # Erst umbenennen, wenn die Datei vollstaendig ist - sonst
+              # liegt nach einem Abbruch ein halbes Abbild da, das aussieht
+              # wie ein gutes.
+              mv "$ziel.teil" "$ziel"
+              echo "Fertig: $(ls -lh "$ziel" | awk '{print $5}')"
+
+              echo "Raeume Abbilder aelter als $AUFBEWAHREN_TAGE Tage"
+              find /sicherung -name 'agora-*' -type f \
+                -mtime "+$AUFBEWAHREN_TAGE" -print -delete || true
+              echo "Vorhanden:"
+              ls -lh /sicherung | tail -n +2
+            volumeMounts:
+            - name: ablage
+              mountPath: /sicherung
+            resources:
+              requests: {cpu: 50m, memory: 64Mi}
+              limits: {memory: 256Mi}
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              capabilities:
+                drop: ["ALL"]
+          volumes:
+          - name: ablage
+            persistentVolumeClaim:
+              claimName: agora-sicherung
