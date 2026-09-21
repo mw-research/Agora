@@ -58,8 +58,14 @@ jobs:
           # und der Build dauert ohnehin nur ein bis zwei Minuten.
 
       # Jeder Push auf main schiebt "latest" weiter; die vorige Version bleibt
-      # als unbenannte Leiche liegen. Die hier raeumt sie weg - Versionen mit
-      # einem Namen (latest, v1.2.3) bleiben unangetastet.
+      # als unbenannte Leiche liegen. Die hier raeumt sie weg.
+      #
+      # delete-only-untagged-versions ist die EINZIGE sichere Schranke. Nicht
+      # in Versuchung kommen, stattdessen ueber ignore-versions zu filtern:
+      # das Muster wird gegen den Versions-NAMEN geprueft, und der ist bei
+      # Container-Paketen die Digest-Pruefsumme, nicht der Tag. Ein Muster
+      # wie ^(latest|v.*)$ trifft dort also nie - und loescht damit alles,
+      # auch latest. Genau so ist am 21.09.2026 das ganze Paket verschwunden.
       - name: Namenlose Altlasten entfernen
         if: github.event_name != 'pull_request'
         uses: actions/delete-package-versions@v5
