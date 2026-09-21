@@ -5,38 +5,43 @@
 # nichts. Zweitens Vorsicht: was gar nicht erst im Kontext liegt, kann auch
 # kein spaeteres COPY versehentlich ins Image holen. Das Dockerfile kopiert
 # heute nur app/ und requirements.txt, aber Dockerfiles aendern sich.
+#
+# ACHTUNG, das ist NICHT die Syntax von .gitignore: hier wird jedes Muster
+# gegen den ganzen Pfad ab der Kontextwurzel geprueft. "__pycache__" allein
+# traefe nur ein Verzeichnis ganz oben, nicht app/__pycache__. Fuer
+# beliebige Tiefe braucht es "**/".
 
 # Geheimnisse und Zustand - duerfen nie in ein Image
-.env
-.env.*
+**/.env
+**/.env.*
 !.env.example
-deploy.env
-*.db
-*.sqlite
-*.sqlite3
+**/deploy.env
+**/*.db
+**/*.sqlite
+**/*.sqlite3
 
 # Umgebungen und Zwischenstaende
-.venv/
-venv/
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
 
 # Versionsverwaltung und Werkzeuge der Entwicklung
-.git/
+.git
 .gitignore
 .gitattributes
-.github/
-.claude/
+.github
+.claude
 
 # Wird im Image nicht gebraucht
 README*.md
 LICENSE
-docs/
-k8s/
-tools/
-tests/
+k8s
+tools
+tests
 docker-compose.yml
 Dockerfile
