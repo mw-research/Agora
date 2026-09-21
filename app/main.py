@@ -63,7 +63,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.26.0"
+APP_VERSION = "0.27.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1162,6 +1162,11 @@ async def create_thread(
         session.add(Participant(thread_id=thread.id, agent_id=agent.id, position=position))
     await session.commit()
 
+    # Damit das neue Thema sofort in den Listen der anderen auftaucht. Ohne
+    # das erschiene es erst, wenn der Worker es das erste Mal anfasst - bei
+    # einem angehaltenen Thema also nie.
+    await orchestrator.publish_thread(thread)
+
     return schemas.ThreadDetail(
         **schemas.ThreadOut.model_validate(thread).model_dump(),
         participants=[schemas.AgentOut.model_validate(a) for a in agents],
@@ -1615,6 +1620,49 @@ async def delete_thread(
 # ---------------------------------------------------------------------------
 # Live-Stream (SSE)
 # ---------------------------------------------------------------------------
+def nur_themenstand(event: dict) -> bool:
+    """Was in den Uebersichtsstrom gehoert: Statusaenderungen, sonst nichts.
+
+    Mit Namen statt als lambda, damit der Test die Bedingung pruefen kann,
+    ohne einen unendlichen Strom aufmachen zu muessen.
+    """
+    return event.get("type") == "thread.update"
+
+
+def _ereignisstrom(request: Request, passt) -> StreamingResponse:
+    """Server-Sent Events aus dem Bus, gefiltert durch `passt`.
+
+    Einmal geschrieben statt zweimal: der Unterschied zwischen dem Strom
+    eines Themas und dem der Uebersicht ist genau diese eine Bedingung.
+    """
+
+    async def generator() -> AsyncIterator[str]:
+        async with bus.subscribe() as queue:
+            yield ": verbunden\n\n"
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    payload = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
+                except asyncio.TimeoutError:
+                    # Ohne Lebenszeichen schliessen Proxys die Verbindung.
+                    yield ": ping\n\n"
+                    continue
+                try:
+                    event = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if not passt(event):
+                    continue
+                yield f"event: {event.get('type', 'message')}\ndata: {payload}\n\n"
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+    )
+
+
 @app.get("/api/threads/{thread_id}/stream")
 async def stream_thread(
     thread_id: str,
@@ -1631,30 +1679,30 @@ async def stream_thread(
         if await session.get(Thread, thread_id) is None:
             raise HTTPException(404, "Thread nicht gefunden")
 
-    async def generator() -> AsyncIterator[str]:
-        async with bus.subscribe() as queue:
-            yield ": verbunden\n\n"
-            while True:
-                if await request.is_disconnected():
-                    return
-                try:
-                    payload = await asyncio.wait_for(queue.get(), timeout=HEARTBEAT_SECONDS)
-                except asyncio.TimeoutError:
-                    yield ": ping\n\n"
-                    continue
-                try:
-                    event = json.loads(payload)
-                except json.JSONDecodeError:
-                    continue
-                if event.get("thread_id") != thread_id:
-                    continue
-                yield f"event: {event.get('type', 'message')}\ndata: {payload}\n\n"
+    return _ereignisstrom(request, lambda e: e.get("thread_id") == thread_id)
 
-    return StreamingResponse(
-        generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
-    )
+
+@app.get("/api/stream")
+async def stream_uebersicht(
+    request: Request,
+    token: str = "",
+    agora_token: str = Cookie(default="", alias=COOKIE_NAME),
+):
+    """Statusaenderungen ALLER Themen - fuer die Liste an der Seite.
+
+    Ohne diesen Strom erfaehrt die Liste nur etwas ueber das Thema, das
+    gerade offen ist; ist gar keins offen, gar nichts. Dann sieht man erst
+    nach einem Neuladen, dass anderswo weiterdiskutiert wurde.
+
+    Bewusst nur thread.update und keine Beitragsdeltas: die Liste zeigt
+    Titel und Zustand, und jedem Browser jeden Buchstaben jedes Themas zu
+    schicken waere Verschwendung.
+    """
+    async with SessionLocal() as session:
+        if await user_by_token(session, token or agora_token) is None:
+            raise HTTPException(401, "Unbekanntes Token")
+
+    return _ereignisstrom(request, nur_themenstand)
 
 
 @app.get("/healthz")

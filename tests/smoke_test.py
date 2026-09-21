@@ -985,12 +985,16 @@ async def main_test() -> int:
                 "art": "gibtesnicht"})
             assert r.status_code == 400, r.text
 
-            # Jede Art im Code hat eine Beschriftung in beiden Sprachen.
+            # Jede Art im Code hat eine Beschriftung in JEDER Sprache. Die
+            # Zahl nicht festnageln - sonst schlaegt der Test an, sobald eine
+            # Sprache dazukommt, obwohl nichts kaputt ist.
             i18n = (ROOT / "app" / "static" / "i18n.js").read_text(encoding="utf-8")
+            sprachen = i18n.count('"app.untertitel"')
+            assert sprachen >= 2, f"nur {sprachen} Sprachbloecke gefunden"
             for kunst in pruefarten.ARTEN:
                 schluessel = f'"neuesThema.art{kunst[:1].upper()}{kunst[1:]}"'
-                assert i18n.count(schluessel) == 2, \
-                    f"{schluessel} fehlt in einer der beiden Sprachen"
+                assert i18n.count(schluessel) == sprachen, \
+                    f"{schluessel} fehlt in einer der {sprachen} Sprachen"
             print("[ok] Art der Diskussion steuert den Auftrag der Agenten")
 
             # --- Grundlage beim Anlegen ------------------------------------
@@ -1187,6 +1191,22 @@ async def main_test() -> int:
                 r = await browser.get("/api/me")
                 assert r.status_code == 401
             print("[ok] Cookie-Anmeldung traegt durch alle Aufrufe und laesst sich beenden")
+
+            # --- Uebersichtsstrom fuer die Seitenleiste --------------------
+            # Der Strom eines Themas liefert nur dessen Ereignisse. Ohne den
+            # hier erfaehrt die Liste nichts, solange kein Thema offen ist -
+            # man musste die Seite neu laden.
+            r = await c.get("/api/stream")
+            assert r.status_code == 401, "ohne Token darf da nichts fliessen"
+
+            # Was durchkommt und was nicht. Bewusst die Bedingung selbst statt
+            # eines echten Stroms: ein unendlicher SSE-Strom laesst sich im
+            # selben Prozess nicht verlaesslich wieder schliessen, und ein
+            # Test, der haengen bleibt, ist schlimmer als keiner.
+            assert main.nur_themenstand({"type": "thread.update", "thread_id": "x"})
+            for daneben in ({"type": "post.delta"}, {"type": "post.created"}, {}):
+                assert not main.nur_themenstand(daneben), daneben
+            print("[ok] Uebersichtsstrom: nur Statusaenderungen, kein Token kein Zugang")
 
             r = await c.get("/healthz")
             assert r.json().get("version"), r.text

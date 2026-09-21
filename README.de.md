@@ -64,7 +64,7 @@ Sticky Sessions sind nicht nötig.
 | `app/rechner_dienst.py` | Der Rechner als eigener Dienst, ohne Datenbank und ohne Netz |
 | `app/main.py` | REST-API, SSE-Endpunkt, Auth |
 | `app/static/` | Oberfläche (reines HTML/CSS/JS, kein Build-Schritt) |
-| `app/static/i18n.js` | Beschriftungen auf Deutsch und Englisch |
+| `app/static/i18n.js` | Beschriftungen auf Deutsch, Englisch und Russisch |
 | `app/meldungen.py` | Fehlermeldungen auf Deutsch und Englisch |
 | `tools/einrichten.sh` | Einrichten und starten ohne Docker – für Sandbox und schlichte Linux-Kiste |
 | `tests/smoke_test.py` | End-to-End-Test ohne echte Modellaufrufe |
@@ -346,9 +346,14 @@ Rechenkapazität.
 
 ## Sprache der Oberfläche
 
-Die Oberfläche gibt es auf Deutsch und Englisch; umgeschaltet wird oben rechts,
-die Wahl bleibt im Browser gespeichert. Ohne Wahl entscheidet die
+Die Oberfläche gibt es auf **Deutsch, Englisch und Russisch**. Der Knopf oben
+rechts schaltet im Kreis weiter und trägt jeweils den Namen der nächsten
+Sprache; die Wahl bleibt im Browser gespeichert. Ohne Wahl entscheidet die
 Browsersprache.
+
+Eine weitere Sprache ist ein Block in
+[`app/static/i18n.js`](app/static/i18n.js) und ein Eintrag in `SPRACHFOLGE` —
+und in jedem bestehenden Block ein `app.sprache`, das auf die neue zeigt.
 
 **Der Quelltext bleibt deutsch** — übersetzt wird nur, was Nutzer lesen. Das
 hält eine einzige Codebasis statt zweier Zweige, die sich nach kurzer Zeit

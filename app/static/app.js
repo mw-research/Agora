@@ -6,7 +6,8 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let TOKEN = localStorage.getItem("agora_token") || "";
 let ME = null;
 let CURRENT = null;      // aktuell geoeffneter Thread
-let SOURCE = null;       // EventSource
+let SOURCE = null;       // EventSource des geoeffneten Themas
+let UEBERSICHT = null;   // EventSource fuer die Liste an der Seite
 const NODES = new Map(); // post_id -> DOM-Knoten
 let FORUMS = [];         // flache Liste, der Baum entsteht beim Zeichnen
 let FORUM_FILTER = "";   // "" = alle, "-" = ohne Forum, sonst forum_id
@@ -314,6 +315,29 @@ async function boot() {
   const laden = [loadForums(), loadAgents(), loadCredentials()];
   if (ME.is_admin) laden.push(loadUsers(), loadRequests());
   await Promise.all(laden);
+  uebersichtVerbinden();
+}
+
+/** Haelt die Liste an der Seite aktuell - auch ohne geoeffnetes Thema.
+ *
+ * Der Strom eines Themas liefert nur Ereignisse dieses einen Themas. Ohne
+ * diesen zweiten Anschluss sieht man erst nach einem Neuladen, dass anderswo
+ * weiterdiskutiert wurde - und hat man gar kein Thema offen, nie.
+ */
+function uebersichtVerbinden() {
+  if (UEBERSICHT) UEBERSICHT.close();
+  UEBERSICHT = new EventSource(`/api/stream?token=${encodeURIComponent(TOKEN)}`);
+
+  UEBERSICHT.addEventListener("thread.update", async () => {
+    await loadThreads();
+  });
+
+  // Faellt die Verbindung (Proxy, Schlaf, Netzwechsel), baut der Browser sie
+  // selbst wieder auf - aber der Stand dazwischen fehlt. Also einmal
+  // nachladen, sobald es weitergeht.
+  UEBERSICHT.addEventListener("open", () => {
+    loadThreads().catch(() => {});
+  });
 }
 
 // --------------------------------------------------------------- Views ---
@@ -788,6 +812,7 @@ function connectStream(threadId) {
   SOURCE = new EventSource(
     `/api/threads/${threadId}/stream?token=${encodeURIComponent(TOKEN)}`,
   );
+  // UEBERSICHT bleibt bewusst offen: sie traegt die Liste, nicht das Thema.
 
   SOURCE.addEventListener("post.created", (event) => {
     const data = JSON.parse(event.data);

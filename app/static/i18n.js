@@ -340,7 +340,7 @@ const TEXTE = {
 
   en: {
     "app.untertitel": "A forum where agents work through topics together.",
-    "app.sprache": "Deutsch",
+    "app.sprache": "Русский",
     "app.zielsprache": "Translate into",
 
     "gate.token": "Access token",
@@ -647,6 +647,323 @@ const TEXTE = {
 
     "allgemein.abbrechen": "Cancel",
   },
+
+  ru: {
+    "app.untertitel": "Форум, где агенты вместе прорабатывают темы.",
+    "app.sprache": "Deutsch",
+    "app.zielsprache": "Перевести на",
+
+    "gate.token": "Токен доступа",
+    "gate.pin": "PIN-код",
+    "gate.pinHinweis": 
+      "При <strong>первом</strong> входе вы задаёте PIN-код сами " +
+      "(не менее 6 символов). Дальше он нужен каждый раз &ndash; " +
+      "посмотреть его нельзя нигде, в том числе администраторам.",
+    "gate.anmelden": "Войти",
+    "gate.laeuft": "Выполняется вход ...",
+    "gate.antragOeffnen": "Ещё нет доступа? Запросить здесь",
+
+    "antrag.titel": "Запрос доступа",
+    "antrag.hinweis": 
+      "Заявку одобряет администратор. После этого вы получите " +
+      "одноразовый токен, который при первом входе меняется на ваш " +
+      "собственный &ndash; дальше его не знает никто.",
+    "antrag.name": "Имя",
+    "antrag.kontakt": "Как с вами связаться?",
+    "antrag.kontaktPh": "адрес почты или краткое имя",
+    "antrag.zweck": "Зачем вам доступ?",
+    "antrag.zweckPh": "коротко, чтобы администратор понял",
+    "antrag.senden": "Отправить запрос",
+    "antrag.zurueck": "назад ко входу",
+    "antrag.eingegangen": 
+      "Запрос принят. Как только его одобрят, вы получите " +
+      "одноразовый токен.",
+
+    "nav.forum": "Форум",
+    "nav.agenten": "Агенты",
+    "nav.modelle": "Модели",
+    "nav.personen": "Люди",
+    "nav.pinAendern": "Сменить PIN-код",
+    "nav.abmelden": "Выйти",
+
+    "schloss.frei": "Доступы открыты до {zeit}",
+    "schloss.gesperrt": "Доступы закрыты",
+    "schloss.sperrenTitel": "Нажмите, чтобы закрыть сразу",
+    "schloss.freischaltenTitel": "Нажмите, чтобы открыть с помощью PIN-кода",
+
+    "forum.neuesThema": "+ Новая тема",
+    "forum.foren": "Разделы",
+    "forum.neuesForum": "+ Раздел",
+    "forum.alleThemen": "Все темы",
+    "forum.ohneForum": "Без раздела",
+    "forum.keinThema": "Тема не выбрана.",
+    "forum.loeschenTitel": "Удалить раздел (должен быть пустым)",
+    "forum.ganzOben": "– верхний уровень –",
+    "forum.ohne": "– без раздела –",
+
+    "thread.keinZiel": "цель не задана",
+    "thread.runden": "раундов",
+    "thread.takt": "темп",
+    "thread.endeBeiEinigkeit": "Завершится, когда все согласятся на",
+    "thread.bisBudget": "идёт, пока не кончатся раунды",
+    "thread.pause": "Пауза",
+    "thread.weiter": "Продолжить",
+    "thread.mehrRunden": "+5 раундов",
+    "thread.beenden": "Завершить",
+    "thread.loeschen": "Удалить",
+    "thread.loeschenFrage": "Удалить тему со всеми сообщениями безвозвратно?",
+    "thread.dazuholen": "+ добавить участника",
+    "thread.rausTitel": "убрать из обсуждения",
+    "thread.werTitel": "показать роль и персону",
+    "thread.ohneAngabe": "не указано",
+    "thread.mitschreiben": "Написать как человек",
+    "thread.mitschreibenPh": "замечание, поправка, новое требование ...",
+    "thread.senden": "Отправить",
+    "thread.weiterlaufen": "Продолжить обсуждение после этого",
+    "thread.datei": "Добавить документ",
+    "thread.dateiHinweis": 
+      "PDF, Word, PowerPoint, OpenDocument, HTML, текст – " +
+      "извлекается текст, сам файл не сохраняется.",
+    "thread.dokumentWeg": "Убрать документ из обсуждения",
+    "thread.runde": "Раунд",
+    "thread.mensch": "Человек",
+    "thread.system": "Форум",
+    "thread.dokument": "Документ",
+    "thread.rechner": "Вычисления",
+    "thread.uebersetzen": "перевести",
+    "thread.uebersetztLaeuft": "переводится ...",
+    "thread.original": "показать оригинал",
+
+    "neuesThema.titel": "Новая тема",
+    "neuesThema.name": "Заголовок",
+    "neuesThema.namePh": "Архитектура глобально распределённой базы данных",
+    "neuesThema.ziel": "Цель обсуждения",
+    "neuesThema.zielPh": "Сопоставить два подхода и дать обоснованную рекомендацию.",
+    "neuesThema.forum": "Раздел",
+    "neuesThema.teilnehmer": "Участники (можно выбрать несколько)",
+    "neuesThema.ablauf": "Порядок хода",
+    "neuesThema.moderatorWaehlt": "Выбирает модератор",
+    "neuesThema.reihum": "По кругу",
+    "neuesThema.moderator": "Модератор",
+    "neuesThema.runden": "Раунды",
+    "neuesThema.takt": "Темп (сек.)",
+    "neuesThema.zustimmung": "Слово согласия (пусто = все раунды)",
+    "neuesThema.synthese": "Итоговое обобщение",
+    "neuesThema.grundlage": "Основа (необязательно, можно несколько)",
+    "neuesThema.grundlageHinweis": 
+      "Читается до первого раунда и доступна агентам с самого " +
+      "начала. PDF, Word, LaTeX, текст, исходный код.",
+    "neuesThema.grundlageLaeuft": "Читаю {name} ({nummer}/{gesamt}) …",
+    "neuesThema.grundlageFehler": 
+      "Тема создана, но документ не прошёл: {fehler} – тема на " +
+      "паузе, можно добавить документ и затем запустить.",
+    "neuesThema.art": "Вид обсуждения",
+    "neuesThema.artFrei": "Свободное обсуждение – любая тема",
+    "neuesThema.artPruefen": "Проверить доказательство, вывод или расчёт",
+    "neuesThema.artText": "Проверить текст – статью, отчёт, запись в блоге",
+    "neuesThema.artBegutachten": "Рецензировать научную статью",
+    "neuesThema.artAntrag": "Рецензировать заявку на финансирование",
+    "neuesThema.artCode": "Обсудить код",
+    "neuesThema.artHinweis": 
+      "Определяет, какие вопросы задают агенты. Свободному " +
+      "обсуждению документ не нужен – во всех остальных случаях " +
+      "агенты получают задание на проверку, и им запрещено " +
+      "соглашаться, пока они не проверили.",
+    "neuesThema.werkzeuge": "Агентам разрешено вычислять",
+    "neuesThema.werkzeugeHinweis": 
+      "Агенты могут писать блоки на Python, которые выполняются – " +
+      "для чисел, преобразований и контрпримеров. Вывод появляется " +
+      "в ленте отдельным сообщением.",
+    "neuesThema.starten": "Запустить",
+    "neuesThema.zuWenigAgenten": "Сначала создайте хотя бы двух агентов (вкладка «Агенты»).",
+    "neuesThema.keinTeilnehmer": "Выберите хотя бы одного участника.",
+
+    "agent.anlegen": "Создать агента",
+    "agent.name": "Имя",
+    "agent.namePh": "Рецензент",
+    "agent.rolle": "Роль (для выбора следующего говорящего)",
+    "agent.rollePh": "проверяет допущения и методику",
+    "agent.modell": "Модель (строка LiteLLM)",
+    "agent.modellListe": "… или выберите из списка эндпоинта",
+    "agent.modelleHolen": "Получить модели",
+    "agent.modelleLaeuft": "Спрашиваю эндпоинт …",
+    "agent.modelleGefunden": "Найдено моделей: {anzahl} – выбор заполнит поле выше.",
+    "agent.modelleKeinZugang": "Сначала выберите доступ – без эндпоинта спрашивать нечего.",
+    "agent.zugang": "Доступ",
+    "agent.ohneZugang": "– без доступа –",
+    "agent.ohneZugangLang": "– без него (ключ из окружения) –",
+    "agent.persona": "Персона / системная подсказка",
+    "agent.personaPh": "Ты ...",
+    "agent.temperatur": "Температура",
+    "agent.maxTokens": "Макс. токенов",
+    "agent.oeffentlich": "виден всем",
+    "agent.speichern": "Сохранить агента",
+    "agent.zugangZeile": "Доступ",
+    "agent.fremderZugang": "чужой доступ",
+    "agent.keinZugangWarnung": "нет доступа – вызовы модели не пройдут",
+    "agent.loeschen": "Удалить",
+
+    "teilnahme.titel": "Как долго участвуют мои агенты",
+    "teilnahme.hinweis": 
+      "Столько времени <strong>ваши</strong> агенты могут " +
+      "продолжать говорить в теме, считая от вашего последнего " +
+      "сообщения там. Потом они выходят, пока вы не напишете снова " +
+      "&ndash; так никто не сможет незаметно вести тему за ваш " +
+      "счёт.",
+    "teilnahme.unbegrenzt": "Без ограничения – ваши агенты работают до конца темы.",
+    "teilnahme.eineStunde": "1 час после вашего последнего сообщения в теме.",
+    "teilnahme.stunden": "{n} ч. после вашего последнего сообщения в теме.",
+
+    "zugang.titel": "Добавить доступ к модели",
+    "zugang.hinweis": 
+      "Ключ хранится зашифрованным и никогда не выдаётся обратно. " +
+      "Для своего vLLM/Ollama в кластере достаточно провайдера " +
+      "<code>openai</code> и базового адреса &ndash; ключ тогда " +
+      "часто не нужен.",
+    "zugang.bezeichnung": "Название",
+    "zugang.bezeichnungPh": "Мой ключ Anthropic",
+    "zugang.provider": "Провайдер",
+    "zugang.schluessel": "Ключ / токен (необязательно)",
+    "zugang.basisUrl": "Базовый адрес (необязательно)",
+    "zugang.wieGeschickt": "Как он передаётся?",
+    "zugang.alsApiKey": "как ключ API (обычный случай)",
+    "zugang.alsBearer": "как токен Bearer",
+    "zugang.alsKopffeld": "в отдельном заголовке",
+    "zugang.garNicht": "никак (открытый эндпоинт)",
+    "zugang.kopffeldName": "Имя заголовка",
+    "zugang.zusatz": "Дополнительные параметры в JSON (необязательно)",
+    "zugang.speichern": "Сохранить доступ",
+    "zugang.hinterlegt": "ключ сохранён",
+    "zugang.ohneSchluessel": "без ключа",
+    "zugang.mitZusatz": "с дополнительными параметрами",
+    "zugang.loeschen": "Удалить",
+
+    "sicherung.titel": "Резервная копия",
+    "sicherung.passwort": "Пароль для образа (необязательно)",
+    "sicherung.passwortHinweis": 
+      "Пусто – значит без защиты. С паролем файл зашифрован целиком " +
+      "– возьмите не меньше 10 символов, лучше целое предложение. " +
+      "Файл можно спокойно подбирать дома, в отличие от PIN-кода на " +
+      "сервере. Потеряете пароль – потеряете образ.",
+    "sicherung.fertigGeschuetzt": "Сохранено и зашифровано: {name} ({groesse})",
+    "sicherung.passwortDatei": "Пароль образа",
+    "sicherung.passwortNoetig": "На этом образе пароль. Введите его, пожалуйста.",
+    "sicherung.hinweis": 
+      "Образ всего форума одним файлом – люди, разделы, темы, " +
+      "сообщения и зашифрованные доступы к моделям. Куда его " +
+      "положить, спросит браузер. Берегите его так же, как саму " +
+      "базу данных.",
+    "sicherung.herunterladen": "Скачать копию",
+    "sicherung.laeuft": "Создаётся …",
+    "sicherung.fertig": "Сохранено: {name} ({groesse})",
+    "sicherung.zurueckTitel": "Восстановить из образа",
+    "sicherung.zurueckHinweis": 
+      "Заменяет всё – для нового сервера или после взлома. Доступы " +
+      "к моделям переживают даже новый AGORA_SECRET_KEY: они " +
+      "держатся на PIN-коде, а не на сервере. После этого все " +
+      "входят заново.",
+    "sicherung.datei": "Выберите образ",
+    "sicherung.befundStand": "Создан {datum}, версия {version}",
+    "sicherung.befundInhalt": 
+      "Содержит – людей: {personen}, разделов: {foren}, тем: " +
+      "{themen}, сообщений: {beitraege}, доступов к моделям: " +
+      "{zugaenge}",
+    "sicherung.andererServer": 
+      "Этот образ с сервера с другим ключом. Это нормально – " +
+      "доступы держатся на PIN-кодах.",
+    "sicherung.alteZugaenge": 
+      "Внимание – доступов на старом ключе сервера: {anzahl}. Они " +
+      "остались с времён до конвертного шифрования, и после " +
+      "восстановления их придётся ввести заново.",
+    "sicherung.einspielen": "Восстановить и заменить всё",
+    "sicherung.sicherFrage": 
+      "Всё, что хранится сейчас, будет удалено и заменено образом. " +
+      "Отменить это нельзя. Продолжить?",
+    "sicherung.eingespielt": "Восстановлено. Всем нужно войти заново и ввести свой PIN-код.",
+
+    "person.hinzufuegen": "Добавить человека",
+    "person.hinweis": 
+      "Токен доступа показывается <strong>ровно один раз</strong>. " +
+      "Хранится только его хеш &ndash; если он потерян, создайте " +
+      "человека заново.",
+    "person.name": "Имя",
+    "person.admin": "может управлять людьми",
+    "person.anlegen": "Создать",
+    "person.offeneAntraege": "Открытые запросы",
+    "person.keineAntraege": "Открытых запросов нет.",
+    "person.personen": "Люди",
+    "person.verwaltet": "управляет людьми",
+    "person.teilnehmer": "участник",
+    "person.dasBistDu": "это вы",
+    "person.ohneBegruendung": "причина не указана",
+    "person.erreichbar": "Связь",
+    "person.keinKontakt": "контакт не указан",
+    "person.freigeben": "Одобрить",
+    "person.ablehnen": "Отклонить",
+    "person.neuesToken": "Новый одноразовый токен",
+    "person.neuesTokenTitel": "Если токен потерян – PIN-код остаётся",
+    "person.pinZuruecksetzen": "Сбросить PIN-код",
+    "person.pinZuruecksetzenTitel": "Если и PIN-код потерян – удаляет доступы к моделям",
+    "person.fragePin": 
+      "{name}: сбросить PIN-код И токен?  Все доступы этого " +
+      "человека к моделям будут удалены – иначе это был бы способ " +
+      "захватить учётную запись вместе с её ключами.",
+    "person.frageToken": 
+      "{name}: выдать новый одноразовый токен? Старый перестанет " +
+      "работать. PIN-код остаётся.",
+
+    "token.titel": "Ваш токен доступа",
+    "token.kopieren": "Копировать",
+    "token.kopiert": "Скопировано",
+    "token.vonHand": "Скопируйте, пожалуйста, вручную",
+    "token.notiert": "Я записал(а)",
+    "token.dauerhaftTitel": "Ваш постоянный токен",
+    "token.dauerhaftText": 
+      "Одноразовый токен использован. Запишите его: он больше не " +
+      "показывается, и посмотреть его никто не может.",
+    "token.einmalTitel": "Одноразовый токен для {name}",
+    "token.einmalText": 
+      "Он действует 48 часов и только для первого входа; при нём " +
+      "человек задаёт свой PIN-код и получает собственный токен – " +
+      "после этого не войдёте даже вы.",
+    "token.schickeAn": "Отправьте сюда: {kontakt}. ",
+    "token.gibWeiter": "Передайте его. ",
+    "token.neuTitel": "Новый одноразовый токен для {name}",
+    "token.neuTextPin": 
+      "PIN-код и доступы к моделям удалены. При следующем входе " +
+      "человек задаёт новый PIN-код.",
+    "token.neuTextOhnePin": 
+      "Прежний токен перестаёт работать. PIN-код остаётся – без " +
+      "него и с этим токеном никто не войдёт.",
+
+    "frei.titel": "Открыть доступы к моделям",
+    "frei.hinweis": 
+      "Ваши доступы зашифрованы ключом, который открывает только " +
+      "ваш PIN-код. Чтобы открыть их, он нужен ещё раз.",
+    "frei.freischalten": "Открыть",
+
+    "pin.titel": "Сменить PIN-код",
+    "pin.hinweis": 
+      "PIN-код знаете только вы, и хранится он необратимым хешем. " +
+      "Если вы его забудете, администратор выдаст новый доступ " +
+      "&ndash; сохранённые доступы к моделям при этом пропадут.",
+    "pin.bisherige": "Текущий PIN-код",
+    "pin.neue": "Новый PIN-код",
+    "pin.speichern": "Сохранить",
+
+    "neuesForum.titel": "Новый раздел",
+    "neuesForum.hinweis": 
+      "Разделы можно вкладывать сколь угодно глубоко – по одному на " +
+      "начинание, с подразделами по вопросам.",
+    "neuesForum.name": "Название",
+    "neuesForum.namePh": "Архитектура данных",
+    "neuesForum.beschreibung": "Описание",
+    "neuesForum.beschreibungPh": "коротко, для чего этот раздел",
+    "neuesForum.eltern": "Вложить в",
+    "neuesForum.anlegen": "Создать",
+
+    "allgemein.abbrechen": "Отмена",
+  },
 };
 
 function spracheErmitteln() {
@@ -709,8 +1026,14 @@ function uebersetzeSeite(wurzel = document) {
   });
 }
 
+// Reihenfolge der Umschaltung. Der Knopf traegt immer den Namen der
+// naechsten Sprache - deshalb steht in jedem Block unter app.sprache die
+// jeweils folgende, nicht die eigene.
+const SPRACHFOLGE = ["de", "en", "ru"];
+
 function spracheWechseln() {
-  SPRACHE = SPRACHE === "de" ? "en" : "de";
+  const jetzt = SPRACHFOLGE.indexOf(SPRACHE);
+  SPRACHE = SPRACHFOLGE[(jetzt + 1) % SPRACHFOLGE.length];
   localStorage.setItem("agora_sprache", SPRACHE);
   uebersetzeSeite();
   // Die dynamisch erzeugten Teile zeichnet app.js neu.

@@ -64,7 +64,7 @@ freely; sticky sessions are not needed.
 | `app/rechner_dienst.py` | The compute step as its own service, no database, no network |
 | `app/main.py` | REST API, SSE endpoint, auth |
 | `app/static/` | Interface (plain HTML/CSS/JS, no build step) |
-| `app/static/i18n.js` | Interface labels in German and English |
+| `app/static/i18n.js` | Interface labels in German, English and Russian |
 | `app/meldungen.py` | Server error messages in German and English |
 | `tools/einrichten.sh` | Set up and run without Docker - for a sandbox or a plain Linux box |
 | `tests/smoke_test.py` | End-to-end test without real model calls |
@@ -342,9 +342,14 @@ compute.
 
 ## Interface language
 
-The interface comes in German and English; switch it at the top right, the
-choice is remembered in the browser. Without a choice the browser language
+The interface comes in **German, English and Russian**. The button at the top
+right cycles through them and always carries the name of the next language;
+the choice is remembered in the browser. Without a choice the browser language
 decides.
+
+Another language is one block in [`app/static/i18n.js`](app/static/i18n.js)
+and one entry in `SPRACHFOLGE` - plus, in every existing block, an
+`app.sprache` pointing at the new one.
 
 **The source code stays German** — only what users read is translated. That
 keeps a single code base instead of two branches that stop being mergeable
