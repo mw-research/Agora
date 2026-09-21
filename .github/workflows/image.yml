@@ -1,0 +1,54 @@
+# Baut das Container-Image und legt es in die GitHub Container Registry.
+#
+# Nuetzlich, wenn auf dem Zielsystem kein Docker laeuft: der Cluster zieht
+# das Image dann aus ghcr.io statt es selbst zu bauen. Wer die Variante
+# ohne Image nimmt (Quellcode als ConfigMap), braucht das hier nicht.
+#
+# Nach dem ersten erfolgreichen Lauf das Paket auf "public" stellen
+# (Repository -> Packages -> agora -> Package settings -> Change visibility),
+# sonst braucht der Cluster zusaetzlich einen imagePullSecret.
+name: Image bauen
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ohne Buildx laeuft der Build mit dem einfachen docker-Treiber, und der
+      # kann den GitHub-Actions-Cache unten nicht exportieren.
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/agora
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=tag
+            type=sha,format=short
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Bewusst ohne cache-from/cache-to: der GitHub-Actions-Cache
+          # (type=gha) bricht seit der Umstellung der Cache-API haeufig ab,
+          # und der Build dauert ohnehin nur ein bis zwei Minuten.

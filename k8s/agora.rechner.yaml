@@ -1,0 +1,136 @@
+# Der Rechner: ein Dienst, der nur Code ausfuehrt - und sonst nichts kann.
+#
+# Nur noetig, wenn die Agenten rechnen duerfen (AGORA_WERKZEUGE=true).
+#
+# Warum ein eigener Pod: die Haertung des Unterprozesses in app/werkzeuge.py
+# ist eine Huerde, keine Mauer. Wer sie ueberwindet, sitzt sonst im Worker -
+# und der hat die Datenbank, die Modell-Schluessel und einen Weg nach draussen,
+# denn er muss ja die Modelle erreichen. Ihn selbst vom Netz zu nehmen geht
+# also nicht.
+#
+# Dieser Pod dagegen braucht gar nichts: keine Datenbank, keine Modelle, kein
+# Internet. Die NetworkPolicy unten verbietet ihm jeden ausgehenden Verkehr und
+# laesst nur den Worker herein. Ein vollstaendiger Ausbruch endet damit in
+# einer Sackgasse.
+#
+#   kubectl -n DEIN-NAMESPACE apply -f k8s/agora.rechner.yaml
+#
+# WICHTIG: NetworkPolicies wirken nur, wenn der Cluster sie durchsetzt. Ohne
+# ein CNI wie Calico oder Cilium sind sie wirkungslos - und dann ist dieser
+# Pod nur unwesentlich sicherer als der Worker. Pruefen:
+#
+#   kubectl -n DEIN-NAMESPACE describe networkpolicy agora-rechner-dicht
+#
+# Danach im Worker AGORA_RECHNER_URL=http://agora-rechner:8000 setzen; in
+# k8s/agora.namespace.yaml steht das schon drin.
+#
+# Das image: unten auf dasselbe setzen wie in k8s/agora.namespace.yaml.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-rechner
+  labels:
+    app: agora-rechner
+spec:
+  selector:
+    app: agora-rechner
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-rechner
+  labels:
+    app: agora-rechner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-rechner
+  template:
+    metadata:
+      labels:
+        app: agora-rechner
+    spec:
+      # Kein Dienstkonto-Token: der Pod hat in der Kubernetes-API nichts
+      # verloren, und ein liegendes Token waere das Erste, wonach jemand sucht.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: rechner
+        image: ghcr.io/DEINE-ORG/agora:latest
+        imagePullPolicy: Always
+        args:
+        - uvicorn
+        - app.rechner_dienst:app
+        - --host=0.0.0.0
+        - --port=8000
+        # Weder Datenbank noch Modell-Schluessel - der Dienst kennt beides
+        # nicht und braucht es nicht.
+        env:
+        - name: PYTHONDONTWRITEBYTECODE
+          value: '1'
+        ports:
+        - containerPort: 8000
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          periodSeconds: 15
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            # Grosszuegiger als anderswo: hier wird gerechnet. Die eigentliche
+            # Grenze pro Auftrag setzt AGORA_WERKZEUG_SPEICHER_MB im Worker.
+            cpu: '2'
+            memory: 2Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        # Das Wurzeldateisystem ist schreibgeschuetzt; gerechnet wird in
+        # diesem Zwischenspeicher, der bei jedem Neustart leer ist.
+        - name: arbeit
+          mountPath: /tmp
+      volumes:
+      - name: arbeit
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Mi
+---
+# Kein Weg hinaus, und herein nur vom Worker.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agora-rechner-dicht
+spec:
+  podSelector:
+    matchLabels:
+      app: agora-rechner
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agora-worker
+    ports:
+    - protocol: TCP
+      port: 8000
+  # egress bleibt absichtlich leer: kein Internet, keine Datenbank, keine
+  # Modelle, nicht einmal DNS. Der Dienst braucht nichts davon.
+  egress: []

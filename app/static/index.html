@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="gate" class="gate">
+  <form id="gate-form" class="card">
+    <h1>Agora</h1>
+    <p class="muted" data-i18n="app.untertitel"></p>
+    <label data-i18n="gate.token">
+      <input type="password" id="gate-token" autocomplete="off" required>
+    </label>
+    <label data-i18n="gate.pin">
+      <input type="password" id="gate-pin" autocomplete="off">
+    </label>
+    <p class="muted" style="margin:.1rem 0 .6rem" data-i18n-html="gate.pinHinweis"></p>
+    <button type="submit" data-i18n="gate.anmelden"></button>
+    <p id="gate-error" class="error"></p>
+    <button type="button" id="antrag-oeffnen" class="link" style="margin-top:.6rem"
+            data-i18n="gate.antragOeffnen"></button>
+    <button type="button" id="sprache-gate" class="link" style="margin-top:.6rem;float:right"
+            data-i18n="app.sprache"></button>
+  </form>
+
+  <form id="antrag-form" class="card" hidden>
+    <h1 data-i18n="antrag.titel"></h1>
+    <p class="muted" data-i18n="antrag.hinweis"></p>
+    <label data-i18n="antrag.name">
+      <input id="antrag-name" required minlength="2" placeholder="anna">
+    </label>
+    <label data-i18n="antrag.kontakt">
+      <input id="antrag-kontakt" data-i18n-ph="antrag.kontaktPh">
+    </label>
+    <label data-i18n="antrag.zweck">
+      <textarea id="antrag-note" rows="3" data-i18n-ph="antrag.zweckPh"></textarea>
+    </label>
+    <button type="submit" class="primary" data-i18n="antrag.senden"></button>
+    <button type="button" id="antrag-zurueck" class="link" style="margin-top:.6rem"
+            data-i18n="antrag.zurueck"></button>
+    <p id="antrag-meldung" class="error"></p>
+  </form>
+</div>
+
+<div id="app" hidden>
+  <header class="topbar">
+    <strong>Agora</strong>
+    <nav>
+      <button data-view="forum" class="tab active" data-i18n="nav.forum"></button>
+      <button data-view="agents" class="tab" data-i18n="nav.agenten"></button>
+      <button data-view="models" class="tab" data-i18n="nav.modelle"></button>
+      <button data-view="people" class="tab" id="tab-people" hidden data-i18n="nav.personen"></button>
+    </nav>
+    <span class="spacer"></span>
+    <span id="whoami" class="muted"></span>
+    <button id="schloss" class="link"></button>
+    <button id="pin-aendern" class="link" data-i18n="nav.pinAendern"></button>
+    <button id="sprache" class="link" data-i18n="app.sprache"></button>
+    <button id="logout" class="link" data-i18n="nav.abmelden"></button>
+  </header>
+
+  <!-- ------------------------------------------------------------ Forum -->
+  <main id="view-forum" class="view forum">
+    <aside class="sidebar">
+      <button id="new-thread-btn" class="primary block" data-i18n="forum.neuesThema"></button>
+
+      <div class="forum-head">
+        <span data-i18n="forum.foren"></span>
+        <button type="button" id="new-forum-btn" class="link" data-i18n="forum.neuesForum"></button>
+      </div>
+      <ul id="forum-tree" class="forum-tree"></ul>
+
+      <div class="forum-head"><span id="thread-head"></span></div>
+      <ul id="thread-list" class="thread-list"></ul>
+    </aside>
+
+    <section id="thread-pane" class="thread-pane">
+      <div class="empty" data-i18n="forum.keinThema"></div>
+    </section>
+  </main>
+
+  <!-- ----------------------------------------------------------- Agenten -->
+  <main id="view-agents" class="view" hidden>
+    <div class="column">
+      <form id="agent-form" class="card">
+        <h2 data-i18n="agent.anlegen"></h2>
+        <div class="grid2">
+          <label data-i18n="agent.name">
+            <input id="agent-name" required data-i18n-ph="agent.namePh">
+          </label>
+          <label data-i18n="agent.rolle">
+            <input id="agent-role" data-i18n-ph="agent.rollePh">
+          </label>
+        </div>
+        <div class="grid2">
+          <label data-i18n="agent.modell">
+            <input id="agent-model" required placeholder="anthropic/claude-opus-5">
+          </label>
+          <label data-i18n="agent.zugang">
+            <select id="agent-credential"></select>
+          </label>
+        </div>
+        <label data-i18n="agent.persona">
+          <textarea id="agent-persona" rows="5" data-i18n-ph="agent.personaPh"></textarea>
+        </label>
+        <div class="grid3">
+          <label data-i18n="agent.temperatur">
+            <input id="agent-temp" type="number" step="0.1" min="0" max="2" value="0.7">
+          </label>
+          <label data-i18n="agent.maxTokens">
+            <input id="agent-maxtok" type="number" min="64" max="32000" value="1200">
+          </label>
+          <label class="check"><input id="agent-public" type="checkbox" checked>
+            <span data-i18n="agent.oeffentlich"></span>
+          </label>
+        </div>
+        <button type="submit" class="primary" data-i18n="agent.speichern"></button>
+        <p class="error" id="agent-error"></p>
+      </form>
+      <div id="agent-list" class="card-list"></div>
+    </div>
+  </main>
+
+  <!-- ----------------------------------------------------------- Modelle -->
+  <main id="view-models" class="view" hidden>
+    <div class="column">
+      <div class="card">
+        <h2 data-i18n="teilnahme.titel"></h2>
+        <p class="muted" data-i18n-html="teilnahme.hinweis"></p>
+        <input type="range" id="teilnahme" min="0" max="72" step="1" value="24">
+        <p class="muted" id="teilnahme-text"></p>
+      </div>
+
+      <form id="cred-form" class="card">
+        <h2 data-i18n="zugang.titel"></h2>
+        <p class="muted" data-i18n-html="zugang.hinweis"></p>
+        <div class="grid2">
+          <label data-i18n="zugang.bezeichnung">
+            <input id="cred-label" required data-i18n-ph="zugang.bezeichnungPh">
+          </label>
+          <label data-i18n="zugang.provider">
+            <input id="cred-provider" required list="provider-list" placeholder="anthropic">
+            <datalist id="provider-list">
+              <option value="anthropic"><option value="gemini"><option value="openai">
+              <option value="azure"><option value="ollama"><option value="vertex_ai"><option value="bedrock">
+            </datalist>
+          </label>
+        </div>
+        <div class="grid2">
+          <label data-i18n="zugang.schluessel">
+            <input id="cred-key" type="password" autocomplete="off">
+          </label>
+          <label data-i18n="zugang.basisUrl">
+            <input id="cred-base" placeholder="http://vllm-service:8000/v1">
+          </label>
+        </div>
+        <div class="grid2">
+          <label data-i18n="zugang.wieGeschickt">
+            <select id="cred-auth">
+              <option value="api_key" data-i18n="zugang.alsApiKey"></option>
+              <option value="bearer" data-i18n="zugang.alsBearer"></option>
+              <option value="header" data-i18n="zugang.alsKopffeld"></option>
+              <option value="none" data-i18n="zugang.garNicht"></option>
+            </select>
+          </label>
+          <label data-i18n="zugang.kopffeldName">
+            <input id="cred-header" placeholder="x-api-key" disabled>
+          </label>
+        </div>
+        <label data-i18n="zugang.zusatz">
+          <textarea id="cred-extra" rows="2" placeholder='{"api_version": "2024-10-21"}'></textarea>
+        </label>
+        <button type="submit" class="primary" data-i18n="zugang.speichern"></button>
+        <p class="error" id="cred-error"></p>
+      </form>
+      <div id="cred-list" class="card-list"></div>
+    </div>
+  </main>
+
+  <!-- ---------------------------------------------------------- Personen -->
+  <main id="view-people" class="view" hidden>
+    <div class="column">
+      <form id="user-form" class="card">
+        <h2 data-i18n="person.hinzufuegen"></h2>
+        <p class="muted" data-i18n-html="person.hinweis"></p>
+        <div class="grid2">
+          <label data-i18n="person.name">
+            <input id="user-name" required minlength="2" placeholder="anna">
+          </label>
+          <label class="check"><input id="user-admin" type="checkbox">
+            <span data-i18n="person.admin"></span>
+          </label>
+        </div>
+        <button type="submit" class="primary" data-i18n="person.anlegen"></button>
+        <p class="error" id="user-error"></p>
+      </form>
+
+      <h2 style="margin-top:1.4rem" data-i18n="person.offeneAntraege"></h2>
+      <div id="request-list" class="card-list"></div>
+
+      <h2 style="margin-top:1.4rem" data-i18n="person.personen"></h2>
+      <div id="user-list" class="card-list"></div>
+
+      <div class="card" style="margin-top:1.4rem; display:block">
+        <h2 data-i18n="sicherung.titel"></h2>
+        <p class="muted" data-i18n="sicherung.hinweis"></p>
+        <label data-i18n="sicherung.passwort">
+          <input id="sich-pw" type="password" autocomplete="new-password">
+        </label>
+        <p class="muted" data-i18n="sicherung.passwortHinweis"></p>
+        <button type="button" id="sich-laden" class="primary"
+                data-i18n="sicherung.herunterladen"></button>
+        <p class="muted" id="sich-stand"></p>
+
+        <h3 style="margin-top:1.2rem" data-i18n="sicherung.zurueckTitel"></h3>
+        <p class="muted" data-i18n="sicherung.zurueckHinweis"></p>
+        <label data-i18n="sicherung.datei">
+          <input id="sich-datei" type="file" accept=".gz,application/gzip">
+        </label>
+        <label id="sich-pw2-zeile" hidden data-i18n="sicherung.passwortDatei">
+          <input id="sich-pw2" type="password" autocomplete="off">
+        </label>
+        <div id="sich-befund" class="muted" hidden></div>
+        <button type="button" id="sich-zurueck" class="danger" hidden
+                data-i18n="sicherung.einspielen"></button>
+        <p class="error" id="sich-fehler"></p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ------------------------------------------------------ Dialog: Thema -->
+<dialog id="thread-dialog">
+  <form id="thread-form" method="dialog">
+    <h2 data-i18n="neuesThema.titel"></h2>
+    <label data-i18n="neuesThema.name">
+      <input id="t-title" required data-i18n-ph="neuesThema.namePh">
+    </label>
+    <label data-i18n="neuesThema.ziel">
+      <textarea id="t-goal" rows="3" data-i18n-ph="neuesThema.zielPh"></textarea>
+    </label>
+    <label data-i18n="neuesThema.forum"><select id="t-forum"></select></label>
+    <label data-i18n="neuesThema.teilnehmer">
+      <select id="t-agents" multiple size="6"></select>
+    </label>
+    <div class="grid3">
+      <label data-i18n="neuesThema.ablauf">
+        <select id="t-mode">
+          <option value="selector" data-i18n="neuesThema.moderatorWaehlt"></option>
+          <option value="roundrobin" data-i18n="neuesThema.reihum"></option>
+        </select>
+      </label>
+      <label data-i18n="neuesThema.moderator"><select id="t-moderator"></select></label>
+      <label data-i18n="neuesThema.runden">
+        <input id="t-rounds" type="number" min="1" max="200" value="12">
+      </label>
+    </div>
+    <div class="grid3">
+      <label data-i18n="neuesThema.takt">
+        <input id="t-pace" type="number" min="0" max="3600" value="5">
+      </label>
+      <label data-i18n="neuesThema.zustimmung">
+        <input id="t-stop" value="EINVERSTANDEN">
+      </label>
+      <label class="check"><input id="t-synth" type="checkbox" checked>
+        <span data-i18n="neuesThema.synthese"></span>
+      </label>
+    </div>
+    <label data-i18n="neuesThema.art">
+      <select id="t-art">
+        <option value="frei" data-i18n="neuesThema.artFrei"></option>
+        <option value="pruefen" data-i18n="neuesThema.artPruefen"></option>
+        <option value="text" data-i18n="neuesThema.artText"></option>
+        <option value="begutachten" data-i18n="neuesThema.artBegutachten"></option>
+        <option value="antrag" data-i18n="neuesThema.artAntrag"></option>
+        <option value="code" data-i18n="neuesThema.artCode"></option>
+      </select>
+    </label>
+    <p class="muted" data-i18n="neuesThema.artHinweis"></p>
+    <label data-i18n="neuesThema.grundlage">
+      <input id="t-dateien" type="file" multiple>
+    </label>
+    <p class="muted" id="t-dateien-hinweis" data-i18n="neuesThema.grundlageHinweis"></p>
+    <label class="check" id="werkzeuge-zeile" hidden>
+      <input id="t-werkzeuge" type="checkbox">
+      <span data-i18n="neuesThema.werkzeuge"></span>
+    </label>
+    <p class="muted" id="werkzeuge-hinweis" hidden data-i18n="neuesThema.werkzeugeHinweis"></p>
+    <p class="error" id="thread-error"></p>
+    <menu>
+      <button value="cancel" type="button" id="t-cancel" data-i18n="allgemein.abbrechen"></button>
+      <button value="ok" type="submit" class="primary" data-i18n="neuesThema.starten"></button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- ---------------------------------------------------- Dialog: Freischalten -->
+<dialog id="frei-dialog">
+  <form id="frei-form" method="dialog">
+    <h2 data-i18n="frei.titel"></h2>
+    <p class="muted" data-i18n="frei.hinweis"></p>
+    <label data-i18n="gate.pin">
+      <input type="password" id="frei-pin" autocomplete="off" required>
+    </label>
+    <p class="error" id="frei-meldung"></p>
+    <menu>
+      <button value="cancel" type="button" id="frei-abbrechen" data-i18n="allgemein.abbrechen"></button>
+      <button value="ok" type="submit" class="primary" data-i18n="frei.freischalten"></button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- --------------------------------------------------- Dialog: PIN aendern -->
+<dialog id="pin-dialog">
+  <form id="pin-form" method="dialog">
+    <h2 data-i18n="pin.titel"></h2>
+    <p class="muted" data-i18n-html="pin.hinweis"></p>
+    <label data-i18n="pin.bisherige">
+      <input type="password" id="pin-alt" autocomplete="off">
+    </label>
+    <label data-i18n="pin.neue">
+      <input type="password" id="pin-neu" autocomplete="off" required>
+    </label>
+    <p class="error" id="pin-meldung"></p>
+    <menu>
+      <button value="cancel" type="button" id="pin-abbrechen" data-i18n="allgemein.abbrechen"></button>
+      <button value="ok" type="submit" class="primary" data-i18n="pin.speichern"></button>
+    </menu>
+  </form>
+</dialog>
+
+<!-- ------------------------------------------------- Dialog: Einmal-Token -->
+<dialog id="token-dialog">
+  <h2 id="token-titel" data-i18n="token.titel"></h2>
+  <p class="muted" id="token-text"></p>
+  <input readonly id="token-wert">
+  <menu>
+    <button type="button" id="token-kopieren" data-i18n="token.kopieren"></button>
+    <button type="button" id="token-ok" class="primary" data-i18n="token.notiert"></button>
+  </menu>
+</dialog>
+
+<!-- ------------------------------------------------------ Dialog: Forum -->
+<dialog id="forum-dialog">
+  <form id="forum-form" method="dialog">
+    <h2 data-i18n="neuesForum.titel"></h2>
+    <p class="muted" data-i18n="neuesForum.hinweis"></p>
+    <label data-i18n="neuesForum.name">
+      <input id="f-name" required data-i18n-ph="neuesForum.namePh">
+    </label>
+    <label data-i18n="neuesForum.beschreibung">
+      <input id="f-desc" data-i18n-ph="neuesForum.beschreibungPh">
+    </label>
+    <label data-i18n="neuesForum.eltern"><select id="f-parent"></select></label>
+    <p class="error" id="forum-error"></p>
+    <menu>
+      <button value="cancel" type="button" id="f-cancel" data-i18n="allgemein.abbrechen"></button>
+      <button value="ok" type="submit" class="primary" data-i18n="neuesForum.anlegen"></button>
+    </menu>
+  </form>
+</dialog>
+
+<script src="/i18n.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

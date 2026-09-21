@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agora
+      POSTGRES_PASSWORD: agora
+      POSTGRES_DB: agora
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agora"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      AGORA_SECRET_KEY: ${AGORA_SECRET_KEY:?AGORA_SECRET_KEY fehlt - siehe .env.example}
+      AGORA_ADMIN_TOKEN: ${AGORA_ADMIN_TOKEN:?AGORA_ADMIN_TOKEN fehlt - siehe .env.example}
+      AGORA_DATABASE_URL: postgresql+asyncpg://agora:agora@postgres:5432/agora
+      # Die API bedient nur HTTP und SSE; die Runden faehrt der worker.
+      AGORA_WORKER_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    environment:
+      AGORA_SECRET_KEY: ${AGORA_SECRET_KEY:?AGORA_SECRET_KEY fehlt - siehe .env.example}
+      AGORA_ADMIN_TOKEN: ${AGORA_ADMIN_TOKEN:?AGORA_ADMIN_TOKEN fehlt - siehe .env.example}
+      AGORA_DATABASE_URL: postgresql+asyncpg://agora:agora@postgres:5432/agora
+      AGORA_WORKER_ENABLED: "true"
+    # Kein Port nach aussen: der Worker spricht nur mit Postgres und den Modellen.
+    command: ["uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:

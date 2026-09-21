@@ -1,0 +1,330 @@
+# Agora in einem einzelnen Namespace - der Kubernetes-Weg.
+#
+# Diese Datei ist eine Vorlage. Vor dem ersten Ausrollen anzupassen:
+#   * image:            zweimal, auf deine Registry
+#   * host:             im Ingress ganz unten
+#   * ingressClassName: nginx, traefik oder was dein Cluster faehrt
+#
+# 1. GEHEIMNIS anlegen. Es steht bewusst NICHT in dieser Datei: der secret-key
+#    verschluesselt die Datenschluessel aller Nutzer, und wer die Datei
+#    weitergibt, gaebe ihn mit.
+#
+#   kubectl -n DEIN-NAMESPACE create secret generic agora-geheim \
+#       --from-literal=secret-key="$(openssl rand -base64 32 | tr '+/' '-_')" \
+#       --from-literal=admin-token="$(openssl rand -hex 24)" \
+#       --from-literal=postgres-password="$(openssl rand -hex 16)"
+#
+#    Ein NEUER secret-key macht die hinterlegten Zugaenge unlesbar. Bewahre ihn
+#    auf.
+#
+# 2. AUSROLLEN:
+#
+#   kubectl -n DEIN-NAMESPACE apply -f k8s/agora.namespace.yaml
+#   kubectl -n DEIN-NAMESPACE get pod -l 'app in (agora,agora-worker,agora-postgres)'
+#
+#    Dort muessen drei Pods laufen.
+#
+# 3. ANMELDEN mit:
+#
+#   kubectl -n DEIN-NAMESPACE get secret agora-geheim \
+#       -o jsonpath='{.data.admin-token}' | base64 -d; echo
+#
+# Drei Deployments: die Oberflaeche samt API, der Worker, der die
+# Diskussionsrunden faehrt, und Postgres. Getrennte Pods, nicht nur getrennte
+# Container - NetworkPolicies wirken auf Pods, und der Worker soll sich anders
+# einschraenken lassen als die Oberflaeche. Der Live-Stream geht ueber
+# LISTEN/NOTIFY, beide Seiten brauchen dieselbe Datenbank.
+#
+# Sollen die Agenten rechnen, kommt k8s/agora.rechner.yaml dazu: ein dritter
+# Dienst ohne jeden Netzausgang, der nur Code ausfuehrt.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agora-postgres-daten
+  labels:
+    app: agora
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-konfiguration
+  labels:
+    app: agora
+data:
+  AGORA_WORKER_INTERVAL: '2.0'
+  # Harte Obergrenze pro Thread -- schuetzt vor einer Diskussion, die niemand
+  # mehr anschaut und trotzdem Tokens verbrennt.
+  AGORA_MAX_ROUNDS_HARD: '200'
+  AGORA_MAX_CONTEXT_POSTS: '40'
+  AGORA_REQUEST_TIMEOUT: '180'
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-postgres
+  labels:
+    app: agora-postgres
+spec:
+  selector:
+    app: agora-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-postgres
+  labels:
+    app: agora-postgres
+spec:
+  replicas: 1
+  # Recreate, nicht RollingUpdate: an der PVC haengt ReadWriteOnce, zwei Pods
+  # gleichzeitig wuerden sich gegenseitig blockieren.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agora-postgres
+  template:
+    metadata:
+      labels:
+        app: agora-postgres
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        env:
+        - name: POSTGRES_USER
+          value: agora
+        - name: POSTGRES_DB
+          value: agora
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: postgres-password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - containerPort: 5432
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - agora
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: '1'
+            memory: 1Gi
+        volumeMounts:
+        - name: daten
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: daten
+        persistentVolumeClaim:
+          claimName: agora-postgres-daten
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora
+  labels:
+    app: agora
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: agora
+  template:
+    metadata:
+      labels:
+        app: agora
+    spec:
+      containers:
+      - name: api
+        image: ghcr.io/DEINE-ORG/agora:latest
+        imagePullPolicy: Always
+        args:
+        - uvicorn
+        - app.main:app
+        - --host=0.0.0.0
+        - --port=8000
+        - --proxy-headers
+        envFrom:
+        - configMapRef:
+            name: agora-konfiguration
+        env:
+        # Die Runden faehrt der worker-Container, nicht dieser hier.
+        - name: AGORA_WORKER_ENABLED
+          value: 'false'
+        - name: AGORA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: secret-key
+        - name: AGORA_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: admin-token
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: postgres-password
+        - name: AGORA_DATABASE_URL
+          value: postgresql+asyncpg://agora:$(POSTGRES_PASSWORD)@agora-postgres:5432/agora
+        ports:
+        - containerPort: 8000
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          periodSeconds: 10
+          failureThreshold: 30
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          periodSeconds: 15
+        resources:
+          requests:
+            cpu: 100m
+            memory: 384Mi
+          limits:
+            cpu: '2'
+            memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-worker
+  labels:
+    app: agora-worker
+spec:
+  # Eigener Pod, nicht nur ein zweiter Container: NetworkPolicies wirken auf
+  # Pods. Nur getrennt laesst sich dem Worker etwas verbieten, das die
+  # Oberflaeche noch darf - und umgekehrt.
+  #
+  # Mehrere Replicas sind sicher: Threads werden per SELECT ... FOR UPDATE
+  # SKIP LOCKED plus Lease-Zeitstempel exklusiv uebernommen.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-worker
+  template:
+    metadata:
+      labels:
+        app: agora-worker
+    spec:
+      containers:
+      - name: worker
+        image: ghcr.io/DEINE-ORG/agora:latest
+        imagePullPolicy: Always
+        args:
+        - uvicorn
+        - app.main:app
+        - --host=0.0.0.0
+        - --port=8000
+        envFrom:
+        - configMapRef:
+            name: agora-konfiguration
+        env:
+        - name: AGORA_WORKER_ENABLED
+          value: 'true'
+        # Ohne Rechner-Dienst rechnet der Worker selbst - siehe
+        # k8s/agora.rechner.yaml.
+        - name: AGORA_RECHNER_URL
+          value: http://agora-rechner:8000
+        - name: AGORA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: secret-key
+        - name: AGORA_ADMIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: admin-token
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: agora-geheim
+              key: postgres-password
+        - name: AGORA_DATABASE_URL
+          value: postgresql+asyncpg://agora:$(POSTGRES_PASSWORD)@agora-postgres:5432/agora
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          periodSeconds: 15
+        resources:
+          requests:
+            cpu: 100m
+            memory: 384Mi
+          limits:
+            cpu: '2'
+            memory: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora
+  labels:
+    app: agora
+spec:
+  selector:
+    app: agora
+  ports:
+  - port: 80
+    targetPort: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agora
+  labels:
+    app: agora
+  annotations:
+    # nginx puffert Antworten - ohne das kommt der Live-Stream (SSE) erst am
+    # Ende eines Beitrags an. Bei traefik ist es nicht noetig.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Liegt eine Authentifizierung davor, kommt ihre Annotation hier hin, z.B.
+    #   traefik.ingress.kubernetes.io/router.middlewares: NAMESPACE-NAME@kubernetescrd
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: agora.example.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: agora
+            port:
+              number: 80
+  tls:
+  - hosts:
+    - agora.example.org
+    secretName: agora-tls
