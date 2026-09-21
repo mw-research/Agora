@@ -1069,8 +1069,18 @@ async def create_thread(
     agents: list[Agent] = []
     for agent_id in dict.fromkeys(payload.agent_ids):
         agent = await session.get(Agent, agent_id)
-        if agent is None or (agent.owner_id != user.id and not agent.is_public):
+        if agent is None:
             raise HTTPException(400, f"Agent {agent_id} nicht verfuegbar")
+        # Nur eigene. Ein fremder Agent laeuft auf dem Modell-Zugang seines
+        # Besitzers, also auf dessen Rechnung - wer mitdiskutieren will,
+        # holt seinen eigenen dazu. Oeffentlich heisst sichtbar, nicht
+        # benutzbar.
+        if agent.owner_id != user.id:
+            raise HTTPException(
+                403,
+                f"'{agent.name}' gehoert jemand anderem. Eigene Agenten kannst du "
+                "hinzufuegen; fremde muss ihr Besitzer selbst dazuholen.",
+            )
         agents.append(agent)
 
     names = [a.name.lower() for a in agents]
@@ -1212,8 +1222,15 @@ async def add_participant(
         raise HTTPException(404, "Thread nicht gefunden")
 
     agent = await session.get(Agent, payload.agent_id)
-    if agent is None or (agent.owner_id != user.id and not agent.is_public):
+    if agent is None:
         raise HTTPException(400, "Agent nicht verfuegbar")
+    # Siehe oben: fremde Agenten kosten fremdes Geld.
+    if agent.owner_id != user.id:
+        raise HTTPException(
+            403,
+            f"'{agent.name}' gehoert jemand anderem. Eigene Agenten kannst du "
+            "hinzufuegen; fremde muss ihr Besitzer selbst dazuholen.",
+        )
 
     bisher = await orchestrator.list_participants(session, thread_id)
     if any(vorhanden.id == agent.id for vorhanden in bisher):

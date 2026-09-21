@@ -325,6 +325,33 @@ async def main_test() -> int:
             assert r.status_code == 400, "fremder Zugang beim Aendern"
             print("[ok] Fremde Modell-Zugaenge lassen sich nicht unterschieben")
 
+            # Sichtbar heisst NICHT benutzbar: ein fremder Agent laeuft auf
+            # dem Modell-Zugang seines Besitzers, also auf dessen Rechnung.
+            fremder_kopf = {"Authorization": f"Bearer {other}"}
+            r = await c.post("/api/threads", headers=fremder_kopf, json={
+                "title": "Auf fremde Kosten",
+                "goal": "Soll nicht gehen.",
+                "agent_ids": [agents[0]["id"], fremd],
+                "mode": "roundrobin", "max_rounds": 1, "pace_seconds": 0})
+            assert r.status_code == 403, f"fremder Agent beim Anlegen: {r.text}"
+            assert "gehoert jemand anderem" in r.text, r.text
+
+            # Und auch nicht nachtraeglich in ein fremdes Thema hineinreichen.
+            r = await c.post("/api/threads", headers=fremder_kopf, json={
+                "title": "Nur mit eigenem",
+                "goal": "Soll gehen.",
+                "agent_ids": [fremd],
+                "mode": "roundrobin", "max_rounds": 1, "pace_seconds": 0,
+                "start_now": False})
+            assert r.status_code == 201, r.text
+            eigenes = r.json()["id"]
+            r = await c.post(f"/api/threads/{eigenes}/participants",
+                             headers=fremder_kopf, json={"agent_id": agents[0]["id"]})
+            assert r.status_code == 403, f"fremder Agent beim Dazuholen: {r.text}"
+            await c.post(f"/api/threads/{eigenes}/control", headers=fremder_kopf,
+                         json={"action": "stop"})
+            print("[ok] Fremde Agenten sind sichtbar, aber nicht einsetzbar")
+
             print("[ok] Zweiter User: Agenten geteilt, Keys nicht")
 
             r = await c.get("/api/me")

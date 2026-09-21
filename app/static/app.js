@@ -593,7 +593,8 @@ function renderThread(thread, posts) {
 }
 
 async function fuelleTeilnehmerAuswahl(thread) {
-  const alle = await api("/api/agents");
+  // Siehe oben - fremde Agenten holt ihr Besitzer selbst dazu.
+  const alle = (await api("/api/agents")).filter((a) => a.owner_id === ME.id);
   const drin = new Set(thread.participants.map((a) => a.id));
   const auswahl = $("#dazu");
   if (!auswahl) return;
@@ -797,7 +798,9 @@ function connectStream(threadId) {
 
 // ------------------------------------------------------ Neues Thema ------
 $("#new-thread-btn").addEventListener("click", async () => {
-  const agents = await api("/api/agents");
+  // Nur eigene: ein fremder Agent laeuft auf dem Modell-Zugang seines
+  // Besitzers. Der Server weist das ab - also gar nicht erst anbieten.
+  const agents = (await api("/api/agents")).filter((a) => a.owner_id === ME.id);
   if (agents.length < 2) {
     alert(t("neuesThema.zuWenigAgenten"));
     return;
