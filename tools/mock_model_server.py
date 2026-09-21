@@ -36,6 +36,22 @@ def moderator_pick(body) -> str:
     return random.choice(names) if names else "Architekt"
 
 
+@app.get("/v1/models")
+async def models():
+    """Die Liste, die jeder OpenAI-kompatible Endpunkt fuehrt.
+
+    Ohne sie liesse sich die Modell-Auswahl im Agentenformular nicht
+    ausprobieren - und die ist der haeufigste Grund, diesen Fake zu starten.
+    """
+    return {
+        "object": "list",
+        "data": [
+            {"id": name, "object": "model", "owned_by": "mock"}
+            for name in ("mock-modell", "mock-modell-gross", "mock-modell-schnell")
+        ],
+    }
+
+
 @app.post("/v1/chat/completions")
 async def completions(request: Request):
     body = await request.json()

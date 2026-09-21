@@ -97,7 +97,35 @@ def pdf_mit_text(text: str) -> bytes:
 HEAD = {"Authorization": "Bearer smoke-admin-token"}
 
 
+def pruefe_offenen_endpunkt() -> None:
+    """Ein Endpunkt ohne Anmeldung braucht trotzdem einen api_key.
+
+    Die OpenAI-kompatiblen Clients brechen sonst mit "Missing credentials"
+    ab, bevor sie den Endpunkt ueberhaupt erreichen - und genau so sind vLLM
+    und Ollama ohne Absicherung erreichbar. Ein Agent OHNE Zugang bleibt
+    davon unberuehrt: der nimmt bewusst den Schluessel aus der Umgebung.
+    """
+    from app.models import Agent as _Ag
+    from app.models import Credential as _Cr
+
+    offen = _Cr(id="x", owner_id="y", label="vLLM", provider="openai",
+                api_base="http://vllm:8000/v1", auth_style="none")
+    agent = _Ag(id="a", owner_id="y", name="A", model="mistral-7b",
+                temperature=0.7, max_tokens=100, credential=offen)
+    kwargs = llm._call_kwargs(agent, dk=None)
+    assert kwargs.get("api_key"), f"offener Endpunkt ohne api_key: {kwargs}"
+    assert kwargs["api_base"] == "http://vllm:8000/v1", kwargs
+
+    # Ohne Zugang: kein Platzhalter, damit die Umgebung greifen kann.
+    ohne = _Ag(id="b", owner_id="y", name="B", model="openai/gpt-4o",
+               temperature=0.7, max_tokens=100, credential=None)
+    assert "api_key" not in llm._call_kwargs(ohne, dk=None), "Umgebung wird uebergangen"
+    print("[ok] Offener Endpunkt bekommt einen Platzhalter, Umgebung bleibt frei")
+
+
 async def main_test() -> int:
+    pruefe_offenen_endpunkt()
+
     app = main.app
     events = []
 

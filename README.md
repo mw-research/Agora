@@ -58,6 +58,7 @@ freely; sticky sessions are not needed.
 | `app/tresor.py` | Envelope encryption of the model credentials |
 | `app/dokumente.py` | Text extraction from PDF, Office and text formats |
 | `app/pruefarten.py` | What the agents ask of a proposal, paper, text, code or proof |
+| `app/modelle.py` | Asks an endpoint which models it offers |
 | `app/sicherung.py` | Backing the forum up into one file and restoring it |
 | `app/werkzeuge.py` | Letting agents compute: running code from a post |
 | `app/rechner_dienst.py` | The compute step as its own service, no database, no network |
@@ -367,8 +368,17 @@ instead of a bare key.
 
 ### Translating posts
 
-Below every post there is **translate**. One click renders it in the currently
-selected language, a second shows the original again.
+Below every post there is **translate**. One click renders it in the target
+language chosen at the top, a second shows the original again.
+
+**Deutsch, English, Русский** - the target language sits in the header and is
+deliberately *not* tied to the interface language. Otherwise you could only
+translate in your own direction, and into Russian not at all as long as there
+is no Russian interface. The browser remembers the choice.
+
+Another language is one entry in `ZIELSPRACHEN` ([`app/main.py`](app/main.py))
+and one in `SPRACHNAMEN` ([`app/static/i18n.js`](app/static/i18n.js)) -
+nothing else.
 
 **On demand, not automatically.** Translating everything would mean paying for
 every post nobody ever reads. This way the cost follows what is actually read.

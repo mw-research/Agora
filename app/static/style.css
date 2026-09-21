@@ -222,6 +222,40 @@ button.danger:hover { border-color: var(--err); color: var(--err); }
 }
 
 .teilnehmer { white-space: nowrap; }
+.teilnehmer .wer {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-bottom: 1px dotted var(--muted);
+}
+.teilnehmer .wer:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+.steckbrief {
+  margin: .4rem 0;
+  padding: .6rem .7rem;
+  background: var(--panel-2);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: .88rem;
+}
+
+/* Die Persona ist oft lang - auf der Karte gekuerzt, vollstaendig steht sie
+   im Thema unter dem Namen. */
+.persona {
+  margin: .3rem 0 0;
+  color: var(--muted);
+  font-size: .85rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+}
 .teilnehmer .raus {
   border: none;
   background: none;

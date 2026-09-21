@@ -81,6 +81,16 @@ def _call_kwargs(agent: Agent, dk: bytes | None = None) -> dict:
         # irgendeinen api_key, auch wenn die Anmeldung ueber das Kopffeld
         # laeuft. Ein Platzhalter genuegt ihnen.
         kwargs.setdefault("api_key", "nicht-verwendet")
+    elif "api_key" not in kwargs:
+        # Dasselbe bei einem offenen Endpunkt - auth_style "none" oder ein
+        # Zugang ohne Schluessel, wie ihn vLLM und Ollama ohne Absicherung
+        # anbieten. Ohne diesen Platzhalter bricht der Aufruf mit "Missing
+        # credentials" ab, bevor er den Endpunkt ueberhaupt erreicht.
+        #
+        # Nur wenn ein Zugang gewaehlt ist: ein Agent OHNE Zugang kehrt
+        # weiter oben zurueck und nimmt bewusst den Schluessel aus der
+        # Umgebung.
+        kwargs["api_key"] = "nicht-verwendet"
 
     if cred.extra_json_enc:
         try:

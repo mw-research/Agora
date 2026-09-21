@@ -12,10 +12,20 @@
 //   data-i18n-ph     setzt das placeholder-Attribut
 //   data-i18n-title  setzt das title-Attribut
 
+// Wohin sich Beitraege uebersetzen lassen. Muss zu ZIELSPRACHEN in
+// app/main.py passen. Die Namen stehen bewusst in der jeweiligen Sprache -
+// wer Russisch sucht, sucht nach "Русский", nicht nach "Russisch".
+const SPRACHNAMEN = {
+  de: "Deutsch",
+  en: "English",
+  ru: "Русский",
+};
+
 const TEXTE = {
   de: {
     "app.untertitel": "Forum, in dem Agenten Themen miteinander bearbeiten.",
     "app.sprache": "English",
+    "app.zielsprache": "Übersetzen nach",
 
     "gate.token": "Zugangs-Token",
     "gate.pin": "PIN",
@@ -77,6 +87,8 @@ const TEXTE = {
     "thread.loeschenFrage": "Thema mit allen Beiträgen endgültig löschen?",
     "thread.dazuholen": "+ Teilnehmer dazuholen",
     "thread.rausTitel": "aus der Diskussion nehmen",
+    "thread.werTitel": "Rolle und Persona anzeigen",
+    "thread.ohneAngabe": "nicht angegeben",
     "thread.mitschreiben": "Als Mensch mitschreiben",
     "thread.mitschreibenPh": "Zwischenruf, Korrektur, neue Anforderung ...",
     "thread.senden": "Beitrag senden",
@@ -147,6 +159,11 @@ const TEXTE = {
     "agent.rolle": "Rolle (für die Sprecherwahl)",
     "agent.rollePh": "prüft Annahmen und Methodik",
     "agent.modell": "Modell (LiteLLM-String)",
+    "agent.modellListe": "… oder aus dem Endpunkt wählen",
+    "agent.modelleHolen": "Modelle abrufen",
+    "agent.modelleLaeuft": "Frage den Endpunkt …",
+    "agent.modelleGefunden": "{anzahl} Modelle gefunden – eins auswählen füllt das Feld oben.",
+    "agent.modelleKeinZugang": "Wähle zuerst einen Zugang – ohne Endpunkt gibt es nichts abzufragen.",
     "agent.zugang": "Zugang",
     "agent.ohneZugang": "– kein Zugang –",
     "agent.ohneZugangLang": "– ohne (Schlüssel aus der Umgebung) –",
@@ -324,6 +341,7 @@ const TEXTE = {
   en: {
     "app.untertitel": "A forum where agents work through topics together.",
     "app.sprache": "Deutsch",
+    "app.zielsprache": "Translate into",
 
     "gate.token": "Access token",
     "gate.pin": "PIN",
@@ -384,6 +402,8 @@ const TEXTE = {
     "thread.loeschenFrage": "Delete this topic and all its posts for good?",
     "thread.dazuholen": "+ add participant",
     "thread.rausTitel": "remove from the discussion",
+    "thread.werTitel": "show role and persona",
+    "thread.ohneAngabe": "not specified",
     "thread.mitschreiben": "Join in as a human",
     "thread.mitschreibenPh": "objection, correction, new requirement ...",
     "thread.senden": "Post",
@@ -453,6 +473,11 @@ const TEXTE = {
     "agent.rolle": "Role (used when picking the next speaker)",
     "agent.rollePh": "checks assumptions and method",
     "agent.modell": "Model (LiteLLM string)",
+    "agent.modellListe": "… or pick one from the endpoint",
+    "agent.modelleHolen": "Fetch models",
+    "agent.modelleLaeuft": "Asking the endpoint …",
+    "agent.modelleGefunden": "{anzahl} models found – picking one fills the field above.",
+    "agent.modelleKeinZugang": "Choose a credential first – without an endpoint there is nothing to ask.",
     "agent.zugang": "Credential",
     "agent.ohneZugang": "– no credential –",
     "agent.ohneZugangLang": "– none (key from the environment) –",

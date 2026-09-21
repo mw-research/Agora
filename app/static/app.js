@@ -471,7 +471,8 @@ async function openThread(threadId) {
 function renderThread(thread, posts) {
   const roster = thread.participants
     .map(
-      (agent) => `<span class="teilnehmer" data-agent="${agent.id}">${escapeHtml(agent.name)}
+      (agent) => `<span class="teilnehmer" data-agent="${agent.id}">
+        <button type="button" class="wer" title="${t("thread.werTitel")}">${escapeHtml(agent.name)}</button>
         <span class="muted">(${escapeHtml(agent.model)})</span>
         <button type="button" class="raus" title="${t("thread.rausTitel")}">&times;</button></span>`,
     )
@@ -484,6 +485,7 @@ function renderThread(thread, posts) {
         <span class="badge ${thread.status}" id="th-status">${thread.status}</span>
       </div>
       <p class="muted" style="margin:.4rem 0">${escapeHtml(thread.goal || t("thread.keinZiel"))}</p>
+      <div id="wer-ist-das" class="steckbrief" hidden></div>
       <p class="muted" style="margin:.2rem 0">${roster}
         <select id="dazu" style="width:auto;display:inline-block;margin-left:.4rem">
           <option value="">${t("thread.dazuholen")}</option>
@@ -545,6 +547,51 @@ function renderThread(thread, posts) {
       }
     }),
   );
+
+  // Wer ist das eigentlich? Rolle und Persona bestimmen, was ein Agent
+  // beitraegt - ohne sie liest man Beitraege, ohne zu wissen, wessen
+  // Blickwinkel man vor sich hat.
+  for (const knopf of $$(".teilnehmer .wer")) {
+    knopf.addEventListener("click", () => {
+      const id = knopf.closest(".teilnehmer").dataset.agent;
+      const agent = thread.participants.find((a) => a.id === id);
+      const kasten = $("#wer-ist-das");
+      if (!agent || !kasten) return;
+      // Zweiter Klick auf denselben schliesst wieder.
+      if (!kasten.hidden && kasten.dataset.agent === id) {
+        kasten.hidden = true;
+        return;
+      }
+      kasten.dataset.agent = id;
+      kasten.textContent = "";
+
+      const kopf = document.createElement("strong");
+      kopf.textContent = agent.name;
+      kasten.appendChild(kopf);
+
+      const zeile = document.createElement("p");
+      zeile.className = "muted";
+      zeile.style.margin = ".1rem 0";
+      zeile.textContent = `${agent.model} · T=${agent.temperature} · ${agent.max_tokens} Tokens`;
+      kasten.appendChild(zeile);
+
+      for (const [beschriftung, wert] of [
+        [t("agent.rolle"), agent.role],
+        [t("agent.persona"), agent.persona],
+      ]) {
+        const absatz = document.createElement("p");
+        absatz.style.margin = ".4rem 0 0";
+        const name = document.createElement("span");
+        name.className = "muted";
+        name.textContent = `${beschriftung}: `;
+        absatz.appendChild(name);
+        // textContent, nicht innerHTML: die Persona schreibt ein Mensch.
+        absatz.appendChild(document.createTextNode(wert || t("thread.ohneAngabe")));
+        kasten.appendChild(absatz);
+      }
+      kasten.hidden = false;
+    });
+  }
 
   $("#dazu").addEventListener("change", async (event) => {
     const agentId = event.target.value;
@@ -682,7 +729,7 @@ function postNode(post) {
       try {
         const antwort = await api(`/api/posts/${post.id}/translate`, {
           method: "POST",
-          body: JSON.stringify({ ziel: SPRACHE }),
+          body: JSON.stringify({ ziel: zielsprache() }),
         });
         koerperFuellen(koerper, antwort.text);
         knopf.textContent = t("thread.original");
@@ -928,6 +975,7 @@ async function loadAgents() {
         <h3>${escapeHtml(agent.name)}</h3>
         <p class="muted" style="margin:.1rem 0">${escapeHtml(agent.model)} &middot; T=${agent.temperature} &middot; ${agent.max_tokens} Tokens</p>
         <p class="muted" style="margin:.1rem 0">${escapeHtml(agent.role || "")}</p>
+        <p class="persona">${escapeHtml(agent.persona || t("thread.ohneAngabe"))}</p>
         <p class="muted" style="margin:.3rem 0 0">${t("agent.zugangZeile")}: ${zugangText}</p>
       </div>`;
 
@@ -969,6 +1017,45 @@ async function loadAgents() {
     list.appendChild(card);
   }
 }
+
+
+// Modell-Liste zum gewaehlten Endpunkt. Bewusst auf Knopfdruck und nicht
+// automatisch: der Aufruf geht nach draussen und kostet Zeit, und wer den
+// Namen kennt, tippt ihn schneller. Das Textfeld bleibt massgeblich - die
+// Liste fuellt es nur.
+async function modelleHolen() {
+  const zugang = $("#agent-credential").value;
+  const stand = $("#agent-modelle-stand");
+  const liste = $("#agent-modelliste");
+  if (!zugang) {
+    stand.textContent = t("agent.modelleKeinZugang");
+    return;
+  }
+  stand.textContent = t("agent.modelleLaeuft");
+  liste.innerHTML = '<option value=""></option>';
+  try {
+    const antwort = await api(`/api/credentials/${zugang}/modelle`);
+    for (const name of antwort.modelle) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      liste.appendChild(option);
+    }
+    stand.textContent = t("agent.modelleGefunden", { anzahl: antwort.modelle.length });
+  } catch (error) {
+    stand.textContent = error.message;
+  }
+}
+
+$("#agent-modelle-holen").addEventListener("click", modelleHolen);
+$("#agent-modelliste").addEventListener("change", (event) => {
+  if (event.target.value) $("#agent-model").value = event.target.value;
+});
+// Anderer Endpunkt, andere Modelle - die alte Liste waere irrefuehrend.
+$("#agent-credential").addEventListener("change", () => {
+  $("#agent-modelliste").innerHTML = '<option value=""></option>';
+  $("#agent-modelle-stand").textContent = "";
+});
 
 $("#agent-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1223,6 +1310,43 @@ $("#user-form").addEventListener("submit", async (event) => {
   }
 });
 
+
+// ----------------------------------------------------------- Zielsprache ---
+// Bewusst NICHT an die Oberflaechensprache gekoppelt: sonst liesse sich nur
+// in die eine oder andere Richtung uebersetzen, und ins Russische gar nicht,
+// solange es die Oberflaeche nicht auf Russisch gibt.
+function zielsprache() {
+  const feld = $("#zielsprache");
+  return (feld && feld.value) || SPRACHE;
+}
+
+function zielsprachenAnbieten() {
+  const feld = $("#zielsprache");
+  if (!feld) return;
+  let gemerkt = null;
+  try {
+    gemerkt = localStorage.getItem("agora-zielsprache");
+  } catch {
+    // Privates Fenster oder gesperrter Speicher - dann eben ohne Gedaechtnis.
+  }
+  feld.innerHTML = "";
+  for (const [kuerzel, name] of Object.entries(SPRACHNAMEN)) {
+    const option = document.createElement("option");
+    option.value = kuerzel;
+    option.textContent = name;
+    feld.appendChild(option);
+  }
+  feld.value = gemerkt && SPRACHNAMEN[gemerkt] ? gemerkt : SPRACHE;
+  feld.addEventListener("change", () => {
+    try {
+      localStorage.setItem("agora-zielsprache", feld.value);
+    } catch {
+      // siehe oben
+    }
+  });
+}
+
+zielsprachenAnbieten();
 
 // ------------------------------------------------------------ Sicherung ---
 // Das Abbild geht durch den Browser: wohin gesichert wird, entscheidet die

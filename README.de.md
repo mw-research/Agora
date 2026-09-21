@@ -58,6 +58,7 @@ Sticky Sessions sind nicht nötig.
 | `app/tresor.py` | Umschlagverschlüsselung der Modell-Zugänge |
 | `app/dokumente.py` | Text aus PDF, Office und Textformaten gewinnen |
 | `app/pruefarten.py` | Welche Fragen die Agenten an Antrag, Paper, Text, Code oder Beweis stellen |
+| `app/modelle.py` | Fragt einen Endpunkt, welche Modelle er anbietet |
 | `app/sicherung.py` | Das Forum als eine Datei sichern und zurückspielen |
 | `app/werkzeuge.py` | Rechnen lassen: Code aus einem Beitrag ausführen |
 | `app/rechner_dienst.py` | Der Rechner als eigener Dienst, ohne Datenbank und ohne Netz |
@@ -376,7 +377,16 @@ unschön, aber besser als eine falsche Übersetzung.
 ### Beiträge übersetzen
 
 Unter jedem Beitrag steht **übersetzen**. Ein Klick überträgt ihn in die
-gerade eingestellte Sprache, ein zweiter zeigt wieder das Original.
+oben gewählte Zielsprache, ein zweiter zeigt wieder das Original.
+
+**Deutsch, English, Русский** — die Zielsprache steht in der Kopfzeile und ist
+bewusst *nicht* an die Sprache der Oberfläche gekoppelt. Sonst ließe sich nur
+in die eigene Richtung übersetzen, und ins Russische gar nicht, solange es die
+Oberfläche nicht auf Russisch gibt. Die Wahl merkt sich der Browser.
+
+Eine weitere Sprache ist ein Eintrag in `ZIELSPRACHEN`
+([`app/main.py`](app/main.py)) und einer in `SPRACHNAMEN`
+([`app/static/i18n.js`](app/static/i18n.js)) — sonst nichts.
 
 **Auf Knopfdruck, nicht von selbst.** Automatisch zu übersetzen hieße, für
 jeden Beitrag zu zahlen, den nie jemand liest. So hängen die Kosten daran, was

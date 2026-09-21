@@ -61,6 +61,10 @@
     <button id="schloss" class="link"></button>
     <button id="pin-aendern" class="link" data-i18n="nav.pinAendern"></button>
     <button id="sprache" class="link" data-i18n="app.sprache"></button>
+    <label class="muted" style="display:inline-flex;align-items:center;gap:.3rem;margin:0">
+      <span data-i18n="app.zielsprache"></span>
+      <select id="zielsprache" style="width:auto;padding:.15rem .3rem"></select>
+    </label>
     <button id="logout" class="link" data-i18n="nav.abmelden"></button>
   </header>
 
@@ -105,6 +109,13 @@
             <select id="agent-credential"></select>
           </label>
         </div>
+        <div class="row" style="align-items:flex-end;gap:.5rem">
+          <label style="flex:1" data-i18n="agent.modellListe">
+            <select id="agent-modelliste"><option value=""></option></select>
+          </label>
+          <button type="button" id="agent-modelle-holen" data-i18n="agent.modelleHolen"></button>
+        </div>
+        <p class="muted" id="agent-modelle-stand"></p>
         <label data-i18n="agent.persona">
           <textarea id="agent-persona" rows="5" data-i18n-ph="agent.personaPh"></textarea>
         </label>

@@ -31,6 +31,7 @@ from . import (
     dokumente,
     llm,
     meldungen,
+    modelle,
     orchestrator,
     pruefarten,
     schemas,
@@ -62,7 +63,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.25.0"
+APP_VERSION = "0.26.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -849,6 +850,46 @@ async def delete_credential(
     await session.commit()
 
 
+@app.get("/api/credentials/{credential_id}/modelle")
+async def modelle_auflisten(
+    credential_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Welche Modelle bietet dieser Endpunkt an?
+
+    Eine Bequemlichkeit beim Anlegen eines Agenten - wer den Namen kennt,
+    schreibt ihn weiter von Hand. Deshalb kommt ein Fehlschlag als lesbarer
+    Satz zurueck und nicht als Absturz.
+    """
+    cred = await session.get(Credential, credential_id)
+    if cred is None or cred.owner_id != user.id:
+        raise HTTPException(404, "Zugang nicht gefunden")
+
+    try:
+        dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
+    except tresor.GesperrtFehler as exc:
+        raise HTTPException(
+            409, f"{exc} Melde dich mit deiner PIN an, dann sehe ich im Endpunkt nach."
+        ) from exc
+
+    # Dieselbe Entschluesselung wie beim Modellaufruf - nicht nachgebaut,
+    # sonst laufen die beiden Wege irgendwann auseinander.
+    try:
+        schluessel = llm._geheimnis(cred.api_key_enc, cred.enc_scheme, dk)
+    except (llm.LLMError, RuntimeError) as exc:
+        raise HTTPException(409, f"Schluessel unlesbar: {exc}") from exc
+
+    try:
+        namen = await modelle.auflisten(cred, schluessel)
+    except modelle.ModellFehler as exc:
+        raise HTTPException(502, str(exc)) from exc
+
+    log.info("Modell-Liste fuer '%s': %d Eintraege", cred.label, len(namen))
+    return {"modelle": namen}
+
+
+
 # ---------------------------------------------------------------------------
 # Agents
 # ---------------------------------------------------------------------------
@@ -1394,6 +1435,15 @@ async def remove_document(
     await bus.publish({"type": "post.removed", "thread_id": thread_id, "post_id": post_id})
 
 
+# Wohin sich Beitraege uebersetzen lassen. Eine weitere Sprache ist ein
+# Eintrag hier und einer in app/static/i18n.js (SPRACHNAMEN) - sonst nichts.
+# Der Name geht so, wie er hier steht, in den Auftrag ans Modell.
+ZIELSPRACHEN = {
+    "de": "Deutsch",
+    "en": "English",
+    "ru": "Russisch (russkij)",
+}
+
 # So viel Text geht hoechstens in einen Uebersetzungsaufruf. Laengeres wird
 # gekuerzt - sonst kostet ein einziger Klick auf ein langes Dokument mehr als
 # die ganze Diskussion.
@@ -1445,8 +1495,9 @@ async def translate_post(
     jemand liest. So haengen die Kosten daran, was tatsaechlich gelesen wird.
     """
     ziel = payload.ziel.strip().lower()[:2]
-    if ziel not in ("de", "en"):
-        raise HTTPException(400, "Zielsprache muss de oder en sein")
+    if ziel not in ZIELSPRACHEN:
+        erlaubt = ", ".join(ZIELSPRACHEN)
+        raise HTTPException(400, f"Zielsprache muss eine von diesen sein: {erlaubt}")
 
     post = await session.get(Post, post_id)
     if post is None:
@@ -1472,7 +1523,7 @@ async def translate_post(
     if gekuerzt:
         quelle = quelle[:UEBERSETZUNG_MAX]
 
-    sprachname = {"de": "Deutsch", "en": "English"}[ziel]
+    sprachname = ZIELSPRACHEN[ziel]
     auftrag = (
         f"Uebersetze den folgenden Forumsbeitrag nach {sprachname}.\n"
         "Gib ausschliesslich die Uebersetzung aus, ohne Vorrede und ohne "
