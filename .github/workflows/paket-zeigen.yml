@@ -1,0 +1,34 @@
+# Zeigt, was in der Container-Registry liegt. Liest nur, aendert nichts.
+#
+# Ausloesen: Actions -> "Paket zeigen" -> Run workflow.
+#
+# Wozu: von aussen laesst sich das nicht feststellen. Die Registry antwortet
+# anonym fuer ein privates und fuer ein nicht vorhandenes Paket gleich (403),
+# damit man ihre Existenz nicht abfragen kann. Nur ein Lauf mit dem Token des
+# Repositories sieht wirklich nach.
+name: Paket zeigen
+
+on:
+  workflow_dispatch:
+
+jobs:
+  zeigen:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+    steps:
+      - name: Versionen auflisten
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BESITZER: ${{ github.repository_owner }}
+        run: |
+          echo "== Pakete des Kontos =="
+          gh api "/users/$BESITZER/packages?package_type=container" \
+            --jq '.[] | "\(.name)  sichtbar=\(.visibility)  Versionen=\(.version_count)"' \
+            || echo "  (Auflisten der Paketliste nicht moeglich)"
+
+          echo
+          echo "== Versionen von 'agora' =="
+          gh api --paginate "/users/$BESITZER/packages/container/agora/versions" \
+            --jq '.[] | "\(.id)  \(.metadata.container.tags | join(",") // "(ohne Tag)")  \(.created_at)"' \
+            || echo "  (kein Paket 'agora' oder kein Zugriff)"
