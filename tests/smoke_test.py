@@ -64,6 +64,36 @@ async def fake_complete(agent, messages, max_tokens=None, dk=None):
 llm.stream = fake_stream
 llm.complete = fake_complete
 
+def pdf_mit_text(text: str) -> bytes:
+    """Ein minimales, gueltiges PDF - ohne Fremdbibliothek zum Erzeugen.
+
+    Die Querverweistabelle muss byte-genau stimmen, sonst muss der Leser
+    raten und der Test prueft am Ende die Ratekunst von pypdf statt unseren
+    Weg. Deshalb werden die Stellen gerechnet.
+    """
+    inhalt = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode("latin-1")
+    objekte = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] "
+        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length " + str(len(inhalt)).encode() + b" >>\nstream\n" + inhalt + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    aus = bytearray(b"%PDF-1.4\n")
+    stellen = []
+    for nummer, koerper in enumerate(objekte, start=1):
+        stellen.append(len(aus))
+        aus += f"{nummer} 0 obj\n".encode() + koerper + b"\nendobj\n"
+    xref = len(aus)
+    aus += f"xref\n0 {len(objekte) + 1}\n".encode() + b"0000000000 65535 f \n"
+    for stelle in stellen:
+        aus += f"{stelle:010d} 00000 n \n".encode()
+    aus += f"trailer\n<< /Size {len(objekte) + 1} /Root 1 0 R >>\n".encode()
+    aus += f"startxref\n{xref}\n%%EOF\n".encode()
+    return bytes(aus)
+
+
 HEAD = {"Authorization": "Bearer smoke-admin-token"}
 
 
@@ -416,6 +446,22 @@ async def main_test() -> int:
             assert dokument["author_name"] == "bericht.docx"
             assert "Messreihe B ergab 4,2 Prozent." in dokument["content"], dokument["content"]
             print("[ok] Dokument ausgelesen und in den Verlauf gelegt")
+
+            # PDF: der einzige Weg, der von einer Fremdbibliothek abhaengt -
+            # und der, ueber den Fremde Dateien hereingeben.
+            r = await c.post(
+                f"/api/threads/{offen['id']}/documents",
+                headers=HEAD,
+                files={"datei": ("studie.pdf", pdf_mit_text("Messwert 42 bestaetigt"),
+                                 "application/pdf")},
+            )
+            assert r.status_code == 201, r.text
+            pdf_beitrag = r.json()
+            assert "Messwert 42 bestaetigt" in pdf_beitrag["content"], pdf_beitrag["content"]
+            await c.delete(
+                f"/api/threads/{offen['id']}/documents/{pdf_beitrag['id']}", headers=HEAD
+            )
+            print("[ok] PDF ausgelesen, Text kommt im Verlauf an")
 
             # Quelltext: wird gelesen wie Text, aber als Code ausgezeichnet -
             # sonst behandeln ihn die Agenten wie Prosa.

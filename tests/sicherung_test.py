@@ -202,6 +202,12 @@ async def main_test() -> int:
             print("[ok] Nur Admins duerfen sichern")
 
     # --- Der Ernstfall: neuer Server, neuer Schluessel --------------------
+    # Erst den Verbindungspool schliessen: unter Windows laesst sich eine
+    # Datei nicht loeschen, solange noch jemand ein Handle darauf haelt.
+    # Unter Linux ginge es auch ohne - der Test soll aber ueberall laufen.
+    from app.db import engine as _motor
+
+    await _motor.dispose()
     DB.unlink()
     schluessel_wechseln(NEUER_SCHLUESSEL)
     assert get_settings().secret_key == NEUER_SCHLUESSEL

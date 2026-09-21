@@ -1,19 +1,25 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
-aiosqlite==0.20.0
-pydantic==2.10.4
-pydantic-settings==2.7.0
-litellm==1.57.0
-cryptography==44.0.0
-pypdf==5.1.0
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+sqlalchemy[asyncio]==2.0.54
+asyncpg==0.31.0
+aiosqlite==0.22.1
+pydantic==2.13.5
+pydantic-settings==2.15.0
+litellm==1.102.0
+cryptography==50.0.1
+# Liest hochgeladene PDF. Bis 6.x hatte es eine Reihe von Meldungen ueber
+# Endlosschleifen und Speicherfrass bei verkorksten Dateien - und genau die
+# kommen hier von aussen herein.
+pypdf==6.19.0
 # Der Worker spricht damit den Rechner-Dienst an (AGORA_RECHNER_URL).
 # Kam bisher nur ueber litellm mit - das ist kein Verlass.
-httpx==0.27.2
+httpx==0.28.1
 # Fuer das Rechnen der Agenten (AGORA_WERKZEUGE). Ohne sie laeuft alles,
 # nur eben ohne Algebra und Numerik.
-sympy==1.13.3
-numpy==2.2.1
-python-multipart==0.0.20
-greenlet==3.1.1
+sympy==1.14.0
+# 2.5.x setzt Python 3.12 voraus; das Projekt laeuft ab 3.11.
+numpy==2.4.6
+# Zerlegt die Datei-Uploads. Vor 0.0.30 mit DoS-Meldungen, und das liegt
+# direkt im Anfrageweg.
+python-multipart==0.0.32
+greenlet==3.5.6
