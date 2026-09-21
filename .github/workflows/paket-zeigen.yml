@@ -6,6 +6,10 @@
 # anonym fuer ein privates und fuer ein nicht vorhandenes Paket gleich (403),
 # damit man ihre Existenz nicht abfragen kann. Nur ein Lauf mit dem Token des
 # Repositories sieht wirklich nach.
+#
+# Die Paketliste des ganzen Kontos geht hier NICHT - dafuer braeuchte es ein
+# persoenliches Token mit read:packages. Das Token eines Laufs kommt nur an
+# die Pakete, die zu diesem Repository gehoeren, und das reicht.
 name: Paket zeigen
 
 on:
@@ -17,18 +21,17 @@ jobs:
     permissions:
       packages: read
     steps:
-      - name: Versionen auflisten
+      - name: Versionen von 'agora' auflisten
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BESITZER: ${{ github.repository_owner }}
         run: |
-          echo "== Pakete des Kontos =="
-          gh api "/users/$BESITZER/packages?package_type=container" \
-            --jq '.[] | "\(.name)  sichtbar=\(.visibility)  Versionen=\(.version_count)"' \
-            || echo "  (Auflisten der Paketliste nicht moeglich)"
-
-          echo
-          echo "== Versionen von 'agora' =="
           gh api --paginate "/users/$BESITZER/packages/container/agora/versions" \
             --jq '.[] | "\(.id)  \(.metadata.container.tags | join(",") // "(ohne Tag)")  \(.created_at)"' \
-            || echo "  (kein Paket 'agora' oder kein Zugriff)"
+            || { echo "Kein Paket 'agora' oder kein Zugriff."; exit 1; }
+
+          echo
+          echo "Zu finden unter:"
+          echo "  https://github.com/users/$BESITZER/packages/container/package/agora"
+          echo "Sichtbarkeit aendern:"
+          echo "  https://github.com/users/$BESITZER/packages/container/agora/settings"

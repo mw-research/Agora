@@ -73,4 +73,9 @@ jobs:
           package-name: agora
           package-type: container
           delete-only-untagged-versions: true
-          min-versions-to-keep: 3
+          # Grosszuegig gewaehlt, und das mit Grund: buildx legt neben dem
+          # eigentlichen Image noch namenlose Beglaubigungs-Manifeste ab, auf
+          # die "latest" verweist. Raeumt man die weg, ist latest kaputt.
+          # Nach dem Verlust vom 21.09.2026 lieber ein paar Leichen zu viel
+          # als eine zu wenig.
+          min-versions-to-keep: 20
