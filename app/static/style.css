@@ -82,10 +82,20 @@ button.danger:hover { border-color: var(--err); color: var(--err); }
   margin-bottom: 1rem;
 }
 
+/* Nichts darf die Seite seitwaerts schieben. Nach unten scrollen ist
+   richtig, zur Seite nie - dann sucht man Text, der rechts verschwunden
+   ist. Wo etwas wirklich breit sein muss (Codebloecke), scrollt es in
+   sich selbst. */
+html, body { max-width: 100%; overflow-x: hidden; }
+
 /* --- Topbar --- */
 .topbar {
   display: flex;
   align-items: center;
+  /* Umbrechen statt hinauslaufen: auf einem schmalen Schirm passen Reiter,
+     Schloss, PIN, Sprache, Zielsprache und Abmelden nicht in eine Zeile -
+     ohne das schiebt sich die ganze Seite seitwaerts. */
+  flex-wrap: wrap;
   gap: .8rem;
   padding: .6rem 1rem;
   background: var(--panel);
@@ -109,6 +119,17 @@ button.danger:hover { border-color: var(--err); color: var(--err); }
   padding: 1rem;
 }
 @media (max-width: 860px) { .forum { grid-template-columns: 1fr; } }
+
+/* Ein Grid- oder Flex-Element schrumpft von sich aus NICHT unter die
+   Eigenbreite seines Inhalts - min-width steht voreingestellt auf auto. Eine
+   einzige lange Codezeile dehnt damit die ganze Spalte, und die Seite laesst
+   sich seitwaerts schieben. Genau deshalb griff das overflow-x am Codeblock
+   nie: es kann nur wirken, wenn der Vorfahr ueberhaupt enger werden darf.
+   Mit min-width: 0 darf er das. */
+.thread-pane,
+.posts,
+.post,
+.thread-head { min-width: 0; }
 
 .sidebar { position: sticky; top: 4rem; }
 .forum-head {
@@ -281,6 +302,8 @@ button.danger:hover { border-color: var(--err); color: var(--err); }
 .post .code {
   white-space: pre;
   overflow-x: auto;
+  /* Damit der Block selbst scrollt und nicht die Seite. */
+  max-width: 100%;
   margin: .5rem 0;
   padding: .6rem .7rem;
   background: #0d0f14;
