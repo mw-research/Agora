@@ -791,3 +791,24 @@ MIT — see [`LICENSE`](LICENSE). Copyright (c) 2026 Markus Wilhelm (mw-research
 
 In short: use it, change it, pass it on, commercially too; the copyright notice
 must stay, and there is no warranty.
+
+---
+
+## DIG:IT-KMU
+
+This application was created as part of the **DIG:IT-KMU** project.
+
+The DIG:IT-KMU project at the **Institute for Digital Engineering (IDEE)** of
+the **Technical University of Applied Sciences Würzburg-Schweinfurt (THWS)**
+supports companies in their digital transformation. Through targeted
+technology transfer, small and medium-sized enterprises are enabled to
+integrate innovative technologies into their business processes safely and
+efficiently.
+
+The project is funded under **ERDF Bavaria 2021–2027** by the Bavarian State
+Ministry of Economic Affairs, Regional Development and Energy, co-financed by
+the **European Union**.
+
+→ [digit.kmu.bayern](https://digit.kmu.bayern)
+
+*Deutsche Fassung dieses Hinweises: siehe [README.de.md](README.de.md).*

@@ -808,3 +808,23 @@ MIT — siehe [`LICENSE`](LICENSE). Copyright (c) 2026 Markus Wilhelm (mw-resear
 
 Kurz: nutzen, ändern, weitergeben, auch kommerziell; der Urheberrechtshinweis
 muss erhalten bleiben, eine Gewährleistung gibt es nicht.
+
+---
+
+## DIG:IT-KMU
+
+Diese Anwendung entstand im Rahmen des Projekts **DIG:IT-KMU**.
+
+Das Projekt DIG:IT-KMU am **Institut für Digital Engineering (IDEE)** der
+**Technischen Hochschule Würzburg-Schweinfurt (THWS)** unterstützt Unternehmen
+bei der digitalen Transformation. Durch gezielten Technologietransfer werden
+kleine und mittlere Unternehmen befähigt, innovative Technologien sicher und
+effizient in ihre Geschäftsprozesse zu integrieren.
+
+Das Projekt wird im Rahmen des **EFRE Bayern 2021–2027** durch das Bayerische
+Staatsministerium für Wirtschaft, Landesentwicklung und Energie gefördert,
+kofinanziert von der **Europäischen Union**.
+
+→ [digit.kmu.bayern](https://digit.kmu.bayern)
+
+*English version of this notice: see [README.md](README.md).*
