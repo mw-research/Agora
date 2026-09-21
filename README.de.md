@@ -69,6 +69,7 @@ Sticky Sessions sind nicht nötig.
 | `tools/einrichten.sh` | Einrichten und starten ohne Docker – für Sandbox und schlichte Linux-Kiste |
 | `tests/smoke_test.py` | End-to-End-Test ohne echte Modellaufrufe |
 | `tests/sicherung_test.py` | Abbild auf einem Server mit neuem Schlüssel einspielen |
+| `tests/grenze_test.py` | Was an der harten Rundengrenze passiert |
 | `k8s/agora.rechner.yaml` | Rechner-Pod samt NetworkPolicy, die ihm jeden Ausgang verbietet |
 | `k8s/agora.sicherung.yaml` | Nächtliche Sicherung als CronJob, ruft den eingebauten Endpunkt |
 

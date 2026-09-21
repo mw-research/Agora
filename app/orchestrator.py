@@ -681,7 +681,13 @@ async def _end_of_budget(
     participants: list[Agent],
     anspruch: str | None = None,
 ) -> None:
-    if thread.synthesize_on_end:
+    # Steht am Ende schon eine Synthese, kommt keine zweite dazu. Sonst
+    # sammeln sich sie an, wenn ein Thema mehrfach an derselben Grenze
+    # ankommt - und kosten jedes Mal einen Modellaufruf.
+    letzte = await recent_posts(session, thread.id, 1)
+    schon_zusammengefasst = bool(letzte) and "(Synthese)" in (letzte[-1].author_name or "")
+
+    if thread.synthesize_on_end and not schon_zusammengefasst:
         moderator = None
         if thread.moderator_agent_id:
             moderator = await session.get(Agent, thread.moderator_agent_id)
@@ -713,7 +719,14 @@ async def _end_of_budget(
         except (llm.LLMError, tresor.GesperrtFehler) as exc:
             log.warning("Synthese fehlgeschlagen: %s", exc)
 
-    await _finish_thread(session, thread, "done", "Rundenbudget aufgebraucht.", anspruch)
+    # Welche der beiden Grenzen gegriffen hat, macht fuer das Weitermachen
+    # einen Unterschied: die eigene laesst sich anheben, die harte nicht.
+    grenze = get_settings().max_rounds_hard
+    if thread.rounds_done >= grenze:
+        schluss = f"Harte Grenze von {grenze} Runden erreicht."
+    else:
+        schluss = "Rundenbudget aufgebraucht."
+    await _finish_thread(session, thread, "done", schluss, anspruch)
 
 
 async def _finish_thread(

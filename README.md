@@ -69,6 +69,7 @@ freely; sticky sessions are not needed.
 | `tools/einrichten.sh` | Set up and run without Docker - for a sandbox or a plain Linux box |
 | `tests/smoke_test.py` | End-to-end test without real model calls |
 | `tests/sicherung_test.py` | Restoring an image on a server with a new key |
+| `tests/grenze_test.py` | What happens at the hard round limit |
 | `k8s/agora.rechner.yaml` | Compute pod plus a NetworkPolicy denying it every way out |
 | `k8s/agora.sicherung.yaml` | Nightly backup as a CronJob, calling the built-in endpoint |
 

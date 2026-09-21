@@ -63,7 +63,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.27.1"
+APP_VERSION = "0.28.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1578,6 +1578,19 @@ async def control_thread(
         thread.status = "done"
         thread.status_detail = f"Beendet durch {user.name}."
     elif action in ("resume", "extend"):
+        # Ueber die harte Grenze hinaus bringt Weitermachen nichts: der Worker
+        # sieht sie beim naechsten Zug wieder, beendet sofort und schreibt
+        # noch eine Synthese. Man drueckt dann immer wieder und bekommt
+        # jedes Mal nur den Moderator. Lieber klar sagen, dass Schluss ist.
+        grenze = get_settings().max_rounds_hard
+        if thread.rounds_done >= grenze:
+            raise HTTPException(
+                409,
+                f"Die harte Grenze von {grenze} Runden ist erreicht - weiter "
+                "geht es hier nicht. Ein Admin kann AGORA_MAX_ROUNDS_HARD "
+                "anheben; sonst hilft nur ein neues Thema, das an diesem "
+                "anknuepft.",
+            )
         if action == "extend":
             thread.max_rounds += payload.rounds
         elif thread.rounds_done >= thread.max_rounds:
