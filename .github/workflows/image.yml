@@ -1,11 +1,11 @@
 # Baut das Container-Image und legt es in die GitHub Container Registry.
 #
 # Nuetzlich, wenn auf dem Zielsystem kein Docker laeuft: der Cluster zieht
-# das Image dann aus ghcr.io statt es selbst zu bauen. Wer die Variante
-# ohne Image nimmt (Quellcode als ConfigMap), braucht das hier nicht.
+# das Image dann aus ghcr.io statt es selbst zu bauen. Wer lieber selbst
+# baut, braucht das hier nicht.
 #
 # Nach dem ersten erfolgreichen Lauf das Paket auf "public" stellen
-# (Repository -> Packages -> agora -> Package settings -> Change visibility),
+# (Profil -> Packages -> agora -> Package settings -> Change visibility),
 # sonst braucht der Cluster zusaetzlich einen imagePullSecret.
 name: Image bauen
 
@@ -38,10 +38,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/agora
+          # Bewusst OHNE type=sha: das legte fuer jeden einzelnen Commit auf
+          # main eine eigene, dauerhaft bleibende Paketversion an - nach ein
+          # paar Wochen Entwicklung sind das dutzende Leichen. Wer einen
+          # bestimmten Stand festhalten will, setzt einen Tag v1.2.3; der
+          # bekommt seine eigene Version und bleibt.
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=tag
-            type=sha,format=short
 
       - uses: docker/build-push-action@v6
         with:
@@ -52,3 +56,15 @@ jobs:
           # Bewusst ohne cache-from/cache-to: der GitHub-Actions-Cache
           # (type=gha) bricht seit der Umstellung der Cache-API haeufig ab,
           # und der Build dauert ohnehin nur ein bis zwei Minuten.
+
+      # Jeder Push auf main schiebt "latest" weiter; die vorige Version bleibt
+      # als unbenannte Leiche liegen. Die hier raeumt sie weg - Versionen mit
+      # einem Namen (latest, v1.2.3) bleiben unangetastet.
+      - name: Namenlose Altlasten entfernen
+        if: github.event_name != 'pull_request'
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: agora
+          package-type: container
+          delete-only-untagged-versions: true
+          min-versions-to-keep: 3
