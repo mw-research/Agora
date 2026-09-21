@@ -1,0 +1,42 @@
+# Was nicht in den Bau-Kontext gehoert.
+#
+# Zwei Gruende. Erstens Gewicht: ohne diese Liste schickt docker das ganze
+# Verzeichnis an den Daemon, .venv eingeschlossen - hunderte Megabyte fuer
+# nichts. Zweitens Vorsicht: was gar nicht erst im Kontext liegt, kann auch
+# kein spaeteres COPY versehentlich ins Image holen. Das Dockerfile kopiert
+# heute nur app/ und requirements.txt, aber Dockerfiles aendern sich.
+
+# Geheimnisse und Zustand - duerfen nie in ein Image
+.env
+.env.*
+!.env.example
+deploy.env
+*.db
+*.sqlite
+*.sqlite3
+
+# Umgebungen und Zwischenstaende
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Versionsverwaltung und Werkzeuge der Entwicklung
+.git/
+.gitignore
+.gitattributes
+.github/
+.claude/
+
+# Wird im Image nicht gebraucht
+README*.md
+LICENSE
+docs/
+k8s/
+tools/
+tests/
+docker-compose.yml
+Dockerfile
