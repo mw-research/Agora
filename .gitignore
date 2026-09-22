@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .env
 agora.db
+
+# Lokale Werkzeugstaende
+.claude/
+probe.db

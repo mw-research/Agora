@@ -85,8 +85,17 @@ button.danger:hover { border-color: var(--err); color: var(--err); }
 /* Nichts darf die Seite seitwaerts schieben. Nach unten scrollen ist
    richtig, zur Seite nie - dann sucht man Text, der rechts verschwunden
    ist. Wo etwas wirklich breit sein muss (Codebloecke), scrollt es in
-   sich selbst. */
-html, body { max-width: 100%; overflow-x: hidden; }
+   sich selbst.
+
+   Hier stand einmal overflow-x: hidden. Das wirkte - und nahm zugleich der
+   Seitenleiste das Kleben: overflow-x: hidden laesst overflow-y zu auto
+   werden, das Wurzelelement wird damit selbst zum Scroll-Container, und
+   position: sticky klebt dann an IHM statt am Fenster. Die Regel war da,
+   sie tat nur nichts.
+
+   Die Arbeit machen ohnehin die min-width: 0 weiter unten - erst damit darf
+   eine Grid-Spalte ueberhaupt schmaler werden als ihr Inhalt. */
+html, body { max-width: 100%; }
 
 /* --- Topbar --- */
 .topbar {
@@ -131,7 +140,20 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .post,
 .thread-head { min-width: 0; }
 
+/* Die Foren bleiben beim Lesen stehen. Eigene Hoehe und eigenes Scrollen,
+   damit auch ein langer Baum erreichbar bleibt statt unten abzureissen.
+   Unter 860px steht die Leiste ueber dem Thema - dort waere Kleben nur im
+   Weg. */
 .sidebar { position: sticky; top: 4rem; }
+@media (min-width: 861px) {
+  .sidebar {
+    max-height: calc(100vh - 5rem);
+    overflow-y: auto;
+    /* Am Ende der Liste nicht die ganze Seite mitscrollen. */
+    overscroll-behavior: contain;
+  }
+}
+@media (max-width: 860px) { .sidebar { position: static; } }
 .forum-head {
   display: flex;
   justify-content: space-between;
@@ -143,6 +165,12 @@ html, body { max-width: 100%; overflow-x: hidden; }
   color: var(--muted);
 }
 .forum-head button { padding: 0; font-size: .78rem; }
+
+.sprachwahl {
+  width: auto;
+  padding: .15rem .3rem;
+  font-size: .85rem;
+}
 
 .forum-tree { list-style: none; margin: 0; padding: 0; }
 .forum-tree li {
@@ -179,6 +207,57 @@ html, body { max-width: 100%; overflow-x: hidden; }
 .thread-list li:hover { border-color: var(--accent); }
 .thread-list li.active { border-color: var(--accent); background: var(--panel-2); }
 .thread-list .t-title { font-size: .92rem; font-weight: 600; }
+
+/* --- Ungelesenes ---
+   Der Punkt allein traegt die Aussage nicht: rund acht Prozent der Maenner
+   sehen Rot und Gruen kaum auseinander. Deshalb zusaetzlich fetter Text und
+   ein dunkler Ring, der den Punkt auch ohne Farbe vom Hintergrund abhebt. */
+.forum-tree li.neu,
+.thread-list li.neu .t-title { font-weight: 700; }
+.forum-tree li.neu::after,
+.thread-list li.neu .t-title::after {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: .4rem;
+  border-radius: 50%;
+  background: var(--ok, #22c55e);
+  border: 1px solid #14532d;
+  vertical-align: middle;
+  flex: none;
+}
+
+/* --- Aufholen ---
+   Erscheint, wenn waehrend des Lesens weiter unten etwas dazukommt. Fest am
+   Fensterrand, damit er dort steht, wo man hin will. */
+.neue-beitraege {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 1.2rem;
+  z-index: 20;
+  padding: .45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--panel-2);
+  color: var(--accent);
+  font-size: .85rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+}
+
+/* --- Formeln ---
+   KaTeX bringt eigene Schriften mit; hier nur, was es in den Beitrag
+   einpasst. Eine abgesetzte Formel darf breiter sein als die Spalte und
+   scrollt dann in sich selbst - wie ein Codeblock. */
+.mathe-block {
+  margin: .6rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+.post .body .katex { font-size: 1.05em; }
 
 .badge {
   display: inline-block;

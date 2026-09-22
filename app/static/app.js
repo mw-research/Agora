@@ -150,9 +150,6 @@ $("#antrag-form").addEventListener("submit", async (event) => {
   }
 });
 
-for (const knopf of ["#sprache", "#sprache-gate"]) {
-  $(knopf).addEventListener("click", spracheWechseln);
-}
 
 /** Wird von i18n.js nach einem Sprachwechsel gerufen. */
 async function nachSprachwechsel() {
@@ -161,6 +158,7 @@ async function nachSprachwechsel() {
   zeichneTeilnahme();
   zeichneForumBaum();
   await loadThreads();
+  await ungelesenHolen();
   if (CURRENT) await openThread(CURRENT.id);
   await Promise.all([loadAgents(), loadCredentials()]);
   if (ME.is_admin) await Promise.all([loadUsers(), loadRequests()]);
@@ -315,6 +313,7 @@ async function boot() {
   const laden = [loadForums(), loadAgents(), loadCredentials()];
   if (ME.is_admin) laden.push(loadUsers(), loadRequests());
   await Promise.all(laden);
+  await ungelesenHolen();
   uebersichtVerbinden();
 }
 
@@ -330,6 +329,7 @@ function uebersichtVerbinden() {
 
   UEBERSICHT.addEventListener("thread.update", async () => {
     await loadThreads();
+    await ungelesenHolen();
   });
 
   // Faellt die Verbindung (Proxy, Schlaf, Netzwechsel), baut der Browser sie
@@ -359,6 +359,43 @@ function kinderVon(parentId) {
   return FORUMS.filter((f) => (f.parent_id || null) === parentId);
 }
 
+// Wo liegt etwas, das ich noch nicht gesehen habe? Wird nach jedem Ereignis
+// nachgeholt, das etwas daran aendern koennte - nicht in einem Takt.
+let UNGELESEN = { threads: [], foren: [], ohne_forum: false };
+
+async function ungelesenHolen() {
+  try {
+    UNGELESEN = await api("/api/ungelesen");
+  } catch {
+    // Ein fehlender Punkt ist kein Grund, die Seite scheitern zu lassen.
+    return;
+  }
+  zeichneForumBaum();
+  punkteInThemenliste();
+}
+
+/** Diesem Thema den Punkt nehmen - ich sehe es ja gerade an. */
+async function gelesenMelden(threadId) {
+  try {
+    await api(`/api/threads/${threadId}/gelesen`, { method: "POST" });
+  } catch {
+    // Im schlimmsten Fall leuchtet der Punkt eine Weile zu lang.
+    return;
+  }
+  await ungelesenHolen();
+}
+
+function punkteInThemenliste() {
+  const neu = new Set(UNGELESEN.threads);
+  for (const item of $$("#thread-list li")) {
+    // Nicht am offenen Thema: das lese ich gerade.
+    const zeigen = neu.has(item.dataset.id) && !(CURRENT && CURRENT.id === item.dataset.id);
+    item.classList.toggle("neu", zeigen);
+    if (zeigen) item.setAttribute("aria-label", t("forum.neuesDa"));
+    else item.removeAttribute("aria-label");
+  }
+}
+
 function zeichneForumBaum() {
   const tree = $("#forum-tree");
   tree.innerHTML = "";
@@ -368,6 +405,12 @@ function zeichneForumBaum() {
     li.style.paddingLeft = `${0.5 + tiefe * 0.9}rem`;
     li.classList.toggle("active", FORUM_FILTER === wert);
     li.textContent = text;
+    // Der Punkt wird nicht allein durch Farbe getragen: fetter Text und ein
+    // dunkler Ring darum, sonst ist er fuer Farbschwache nicht da.
+    const hatNeues =
+      wert === "-" ? UNGELESEN.ohne_forum : wert !== "" && UNGELESEN.foren.includes(wert);
+    li.classList.toggle("neu", Boolean(hatNeues));
+    if (hatNeues) li.setAttribute("aria-label", `${text} - ${t("forum.neuesDa")}`);
     li.addEventListener("click", async (event) => {
       if (event.target.classList.contains("weg")) return;
       FORUM_FILTER = wert;
@@ -375,6 +418,19 @@ function zeichneForumBaum() {
       await loadThreads();
     });
     if (forum && (forum.creator_id === ME.id || ME.is_admin)) {
+      // Damit laesst sich eine Ebene einziehen: erst das neue Oberforum
+      // anlegen, dann die vorhandenen daruntersetzen.
+      const umhaengen = document.createElement("button");
+      umhaengen.className = "weg umhaengen";
+      umhaengen.type = "button";
+      umhaengen.textContent = "\u21b3";
+      umhaengen.title = t("forum.umhaengenTitel");
+      umhaengen.addEventListener("click", (event) => {
+        event.stopPropagation();
+        forumUmhaengen(forum);
+      });
+      li.appendChild(umhaengen);
+
       const weg = document.createElement("button");
       weg.className = "weg";
       weg.type = "button";
@@ -406,6 +462,55 @@ function zeichneForumBaum() {
   zeichne(null, 1);
 
   eintrag(t("forum.ohneForum"), "-", 1, null);
+}
+
+/** Ein Forum unter ein anderes haengen - oder ganz nach oben.
+ *
+ * Bewusst eine Auswahlliste und kein Ziehen mit der Maus: der Baum kann
+ * tiefer sein als das Fenster hoch ist, und ein Ring waere mit der Maus
+ * schnell gebaut. Der Server weist ihn ab, aber erst hinterher.
+ */
+function forumUmhaengen(forum) {
+  const auswahl = document.createElement("select");
+  auswahl.innerHTML = forumOptionen(forum.parent_id, true, t("forum.ganzOben"));
+  // Sich selbst als eigenes Oberforum gibt es nicht.
+  for (const option of auswahl.options) {
+    if (option.value === forum.id) option.remove();
+  }
+
+  const feld = document.createElement("dialog");
+  feld.className = "card";
+  const titel = document.createElement("p");
+  titel.textContent = t("forum.umhaengenFrage", { name: forum.name });
+  const reihe = document.createElement("div");
+  reihe.className = "row";
+  const ok = document.createElement("button");
+  ok.className = "primary";
+  ok.textContent = t("forum.umhaengen");
+  const ab = document.createElement("button");
+  ab.textContent = t("allgemein.abbrechen");
+  reihe.append(ok, ab);
+  feld.append(titel, auswahl, reihe);
+  document.body.appendChild(feld);
+  feld.showModal();
+
+  const schliessen = () => {
+    feld.close();
+    feld.remove();
+  };
+  ab.addEventListener("click", schliessen);
+  ok.addEventListener("click", async () => {
+    try {
+      await api(`/api/forums/${forum.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ parent_id: auswahl.value || null }),
+      });
+      schliessen();
+      await loadForums();
+    } catch (error) {
+      alert(error.message);
+    }
+  });
 }
 
 function forumName(id) {
@@ -479,6 +584,7 @@ async function loadThreads() {
     item.addEventListener("click", () => openThread(thread.id));
     list.appendChild(item);
   }
+  punkteInThemenliste();
 }
 
 async function openThread(threadId) {
@@ -490,6 +596,7 @@ async function openThread(threadId) {
     item.classList.toggle("active", item.dataset.id === threadId),
   );
   connectStream(threadId);
+  await gelesenMelden(threadId);
 }
 
 function renderThread(thread, posts) {
@@ -524,6 +631,14 @@ function renderThread(thread, posts) {
         }
         <span id="th-detail"></span>
       </p>
+      <p class="muted" style="margin:.2rem 0">
+        <label style="display:inline-flex;align-items:center;gap:.3rem;margin:0">
+          ${t("thread.imForum")}
+          <select id="th-forum" style="width:auto;display:inline-block">
+            ${forumOptionen(thread.forum_id, true, t("forum.ohne"))}
+          </select>
+        </label>
+      </p>
       <div class="controls">
         <button data-action="pause">${t("thread.pause")}</button>
         <button data-action="resume">${t("thread.weiter")}</button>
@@ -550,9 +665,28 @@ function renderThread(thread, posts) {
     </form>`;
 
   $("#th-detail").textContent = thread.status_detail ? ` — ${thread.status_detail}` : "";
+
+  // Ein Thema umhaengen, wenn es im falschen Forum gelandet ist. Anders als
+  // in einem Forum, das seine Adressen aus dem Forumsnamen baut, bleibt die
+  // Kennung dieselbe - es braucht also weder Umleitung noch alte URL.
+  $("#th-forum").addEventListener("change", async (event) => {
+    try {
+      await api(`/api/threads/${thread.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ forum_id: event.target.value || null }),
+      });
+      CURRENT.forum_id = event.target.value || null;
+      await loadThreads();
+    } catch (error) {
+      alert(error.message);
+      event.target.value = thread.forum_id || "";
+    }
+  });
   const container = $("#posts");
   posts.forEach((post) => container.appendChild(postNode(post)));
+  // Beim Oeffnen ans Ende: man will den Stand sehen, nicht den Anfang.
   window.scrollTo(0, document.body.scrollHeight);
+  zurueckgebliebenZuruecksetzen();
 
   $$("#thread-pane .controls button").forEach((button) =>
     button.addEventListener("click", () => controlThread(button.dataset.action)),
@@ -683,6 +817,47 @@ async function fuelleTeilnehmerAuswahl(thread) {
  * Bewusst ohne innerHTML: der Text kommt aus Modellen und von Menschen, und
  * beides darf keine Auszeichnung in die Seite schmuggeln.
  */
+// Mathematik zwischen Dollarzeichen: $...$ mitten im Satz, $$...$$ als
+// eigene Zeile. Die Schreibweise ist die, die LLMs von sich aus benutzen -
+// ohne Darstellung stehen die Dollarzeichen roh im Text.
+//
+// Ein einzelnes $ ist oft einfach Geld ("$5 pro Tausend Token"). Deshalb
+// zaehlt nur, was auf beiden Seiten direkt an ein Zeichen grenzt, das kein
+// Leerraum ist, und was keinen Zeilenumbruch enthaelt.
+const MATHE = /\$\$([\s\S]+?)\$\$|\$(?![\s$])((?:[^$\n\\]|\\.)+?)(?<![\s\\])\$/g;
+
+/** Text in einen Knoten schreiben und dabei Formeln setzen. */
+function matheEinsetzen(ziel, text) {
+  if (typeof katex === "undefined" || !text.includes("$")) {
+    ziel.appendChild(document.createTextNode(text));
+    return;
+  }
+  let zuletzt = 0;
+  MATHE.lastIndex = 0;
+  for (let treffer; (treffer = MATHE.exec(text)) !== null; ) {
+    const abgesetzt = treffer[1] !== undefined;
+    const formel = abgesetzt ? treffer[1] : treffer[2];
+    if (treffer.index > zuletzt) {
+      ziel.appendChild(document.createTextNode(text.slice(zuletzt, treffer.index)));
+    }
+    const knoten = document.createElement(abgesetzt ? "div" : "span");
+    if (abgesetzt) knoten.className = "mathe-block";
+    try {
+      // throwOnError: false wuerde den Fehler rot in die Seite schreiben.
+      // Lieber die Quelle stehen lassen - sie ist lesbar, die rote Zeile
+      // nicht.
+      katex.render(formel, knoten, { displayMode: abgesetzt, throwOnError: true });
+      ziel.appendChild(knoten);
+    } catch {
+      ziel.appendChild(document.createTextNode(treffer[0]));
+    }
+    zuletzt = treffer.index + treffer[0].length;
+  }
+  if (zuletzt < text.length) {
+    ziel.appendChild(document.createTextNode(text.slice(zuletzt)));
+  }
+}
+
 function koerperFuellen(el, text) {
   el.textContent = "";
   const teile = String(text || "").split("```");
@@ -697,7 +872,8 @@ function koerperFuellen(el, text) {
       block.textContent = (istSprache ? zeilen.slice(1).join("\n") : teil).replace(/\n$/, "");
       el.appendChild(block);
     } else if (teil) {
-      el.appendChild(document.createTextNode(teil));
+      // Nur ausserhalb der Code-Bloecke setzen: in Quelltext ist ein $ ein $.
+      matheEinsetzen(el, teil);
     }
   });
 }
@@ -806,6 +982,60 @@ async function controlThread(action) {
   await loadThreads();
 }
 
+// -------------------------------------------------------- Mitlaufen ------
+// Wie weit man vom Ende weg sein darf und trotzdem mitgezogen wird.
+const ENDE_TOLERANZ = 120;
+// Wie viele Beitraege gekommen sind, seit man zurueckgeblieben ist.
+let NEUE_SEIT_ABRISS = 0;
+
+function amEndeDran() {
+  return window.innerHeight + window.scrollY >= document.body.scrollHeight - ENDE_TOLERANZ;
+}
+
+/** Schreibt gerade jemand? Dann auf keinen Fall wegscrollen. */
+function amTippen() {
+  const aktiv = document.activeElement;
+  if (!aktiv) return false;
+  return ["TEXTAREA", "INPUT", "SELECT"].includes(aktiv.tagName) || aktiv.isContentEditable;
+}
+
+/** Ans Ende gehen - aber nur, wenn das gerade niemanden stoert.
+ *
+ * Der alte Stand sprang bei jedem neuen Beitrag ans Ende. Wer weiter oben
+ * las, wurde mitten im Satz weggerissen. Jetzt entscheidet die Position:
+ * wer schon unten steht, laeuft mit; wer liest, bleibt stehen und bekommt
+ * einen Knopf.
+ */
+function mitlaufen({ neuerBeitrag = false } = {}) {
+  if (amEndeDran() && !amTippen()) {
+    window.scrollTo(0, document.body.scrollHeight);
+    zurueckgebliebenZuruecksetzen();
+    return;
+  }
+  if (neuerBeitrag) {
+    NEUE_SEIT_ABRISS += 1;
+    const knopf = $("#neue-beitraege");
+    knopf.textContent = t("thread.neueBeitraege", { anzahl: NEUE_SEIT_ABRISS });
+    knopf.hidden = false;
+  }
+}
+
+function zurueckgebliebenZuruecksetzen() {
+  NEUE_SEIT_ABRISS = 0;
+  const knopf = $("#neue-beitraege");
+  if (knopf) knopf.hidden = true;
+}
+
+$("#neue-beitraege").addEventListener("click", () => {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
+  zurueckgebliebenZuruecksetzen();
+});
+
+// Wer von Hand ans Ende scrollt, hat aufgeholt - dann darf der Knopf weg.
+window.addEventListener("scroll", () => {
+  if (NEUE_SEIT_ABRISS && amEndeDran()) zurueckgebliebenZuruecksetzen();
+}, { passive: true });
+
 // ---------------------------------------------------------- Live-Stream --
 function connectStream(threadId) {
   if (SOURCE) SOURCE.close();
@@ -823,18 +1053,17 @@ function connectStream(threadId) {
     $("#posts").appendChild(
       postNode({ ...data, id: data.post_id, content: "", status: "streaming" }),
     );
-    window.scrollTo(0, document.body.scrollHeight);
+    mitlaufen({ neuerBeitrag: true });
   });
 
   SOURCE.addEventListener("post.delta", (event) => {
     const data = JSON.parse(event.data);
     const node = NODES.get(data.post_id);
     if (!node || !data.text) return;
-    const atBottom =
-      window.innerHeight + window.scrollY >= document.body.scrollHeight - 120;
+    const mitziehen = amEndeDran() && !amTippen();
     node._roh = (node._roh || "") + data.text;
     koerperFuellen(node.querySelector(".body"), node._roh);
-    if (atBottom) window.scrollTo(0, document.body.scrollHeight);
+    if (mitziehen) window.scrollTo(0, document.body.scrollHeight);
   });
 
   SOURCE.addEventListener("post.done", (event) => {
@@ -844,6 +1073,8 @@ function connectStream(threadId) {
     node._roh = data.content || "";
     koerperFuellen(node.querySelector(".body"), node._roh);
     node.className = `post ${node.classList.contains("human") ? "human" : ""} ${data.status}`;
+    // Das Thema steht offen vor mir - also habe ich es gesehen.
+    if (CURRENT) gelesenMelden(CURRENT.id);
   });
 
   SOURCE.addEventListener("post.removed", (event) => {

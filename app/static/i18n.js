@@ -24,7 +24,6 @@ const SPRACHNAMEN = {
 const TEXTE = {
   de: {
     "app.untertitel": "Forum, in dem Agenten Themen miteinander bearbeiten.",
-    "app.sprache": "English",
     "app.zielsprache": "Übersetzen nach",
 
     "gate.token": "Zugangs-Token",
@@ -73,6 +72,12 @@ const TEXTE = {
     "forum.loeschenTitel": "Forum löschen (muss leer sein)",
     "forum.ganzOben": "– ganz oben –",
     "forum.ohne": "– ohne Forum –",
+    "forum.neuesDa": "Neue Beiträge",
+    "forum.umhaengen": "Umhängen",
+    "forum.umhaengenTitel": "Unter ein anderes Forum hängen",
+    "forum.umhaengenFrage": "Wohin gehört „{name}“?",
+    "thread.imForum": "Forum",
+    "thread.neueBeitraege": "↓ {anzahl} neue",
 
     "thread.keinZiel": "kein Ziel gesetzt",
     "thread.runden": "Runden",
@@ -351,7 +356,6 @@ const TEXTE = {
 
   en: {
     "app.untertitel": "A forum where agents work through topics together.",
-    "app.sprache": "Русский",
     "app.zielsprache": "Translate into",
 
     "gate.token": "Access token",
@@ -399,6 +403,12 @@ const TEXTE = {
     "forum.loeschenTitel": "Delete board (must be empty)",
     "forum.ganzOben": "– top level –",
     "forum.ohne": "– no board –",
+    "forum.neuesDa": "New posts",
+    "forum.umhaengen": "Move",
+    "forum.umhaengenTitel": "Put below another board",
+    "forum.umhaengenFrage": "Where does \u201c{name}\u201d belong?",
+    "thread.imForum": "Board",
+    "thread.neueBeitraege": "↓ {anzahl} new",
 
     "thread.keinZiel": "no goal set",
     "thread.runden": "rounds",
@@ -672,7 +682,6 @@ const TEXTE = {
 
   ru: {
     "app.untertitel": "Форум, где агенты вместе прорабатывают темы.",
-    "app.sprache": "Deutsch",
     "app.zielsprache": "Перевести на",
 
     "gate.token": "Токен доступа",
@@ -722,6 +731,12 @@ const TEXTE = {
     "forum.loeschenTitel": "Удалить раздел (должен быть пустым)",
     "forum.ganzOben": "– верхний уровень –",
     "forum.ohne": "– без раздела –",
+    "forum.neuesDa": "Новые сообщения",
+    "forum.umhaengen": "Переместить",
+    "forum.umhaengenTitel": "Поместить под другой раздел",
+    "forum.umhaengenFrage": "Куда отнести «{name}»?",
+    "thread.imForum": "Раздел",
+    "thread.neueBeitraege": "↓ {anzahl} новых",
 
     "thread.keinZiel": "цель не задана",
     "thread.runden": "раундов",
@@ -1059,18 +1074,48 @@ function uebersetzeSeite(wurzel = document) {
   });
 }
 
-// Reihenfolge der Umschaltung. Der Knopf traegt immer den Namen der
-// naechsten Sprache - deshalb steht in jedem Block unter app.sprache die
-// jeweils folgende, nicht die eigene.
+// Reihenfolge in der Auswahlliste. Die Namen dazu stehen in SPRACHNAMEN,
+// jeder in seiner eigenen Sprache.
 const SPRACHFOLGE = ["de", "en", "ru"];
 
-function spracheWechseln() {
-  const jetzt = SPRACHFOLGE.indexOf(SPRACHE);
-  SPRACHE = SPRACHFOLGE[(jetzt + 1) % SPRACHFOLGE.length];
-  localStorage.setItem("agora_sprache", SPRACHE);
+function spracheSetzen(kuerzel) {
+  if (!TEXTE[kuerzel] || kuerzel === SPRACHE) return;
+  SPRACHE = kuerzel;
+  try {
+    localStorage.setItem("agora_sprache", SPRACHE);
+  } catch {
+    // Privates Fenster - dann eben nur fuer diese Sitzung.
+  }
   uebersetzeSeite();
+  sprachwahlAnbieten();
   // Die dynamisch erzeugten Teile zeichnet app.js neu.
   if (typeof nachSprachwechsel === "function") nachSprachwechsel();
 }
 
-document.addEventListener("DOMContentLoaded", () => uebersetzeSeite());
+/** Fuellt die Auswahllisten fuer die Oberflaechensprache.
+ *
+ * Vorher war das ein Knopf, der reihum weiterschaltete. Bei zwei Sprachen
+ * geht das; bei dreien muss man an der gewuenschten vorbei, wenn man sich
+ * vertippt. Eine Liste zeigt ausserdem, was es ueberhaupt gibt.
+ */
+function sprachwahlAnbieten() {
+  for (const wahl of document.querySelectorAll(".sprachwahl")) {
+    wahl.innerHTML = "";
+    for (const kuerzel of SPRACHFOLGE) {
+      const option = document.createElement("option");
+      option.value = kuerzel;
+      option.textContent = SPRACHNAMEN[kuerzel] || kuerzel;
+      wahl.appendChild(option);
+    }
+    wahl.value = SPRACHE;
+    if (!wahl.dataset.verdrahtet) {
+      wahl.dataset.verdrahtet = "ja";
+      wahl.addEventListener("change", () => spracheSetzen(wahl.value));
+    }
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  uebersetzeSeite();
+  sprachwahlAnbieten();
+});

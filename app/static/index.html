@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agora</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="/katex/katex.min.css">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -24,8 +25,8 @@
     <p id="gate-error" class="error"></p>
     <button type="button" id="antrag-oeffnen" class="link" style="margin-top:.6rem"
             data-i18n="gate.antragOeffnen"></button>
-    <button type="button" id="sprache-gate" class="link" style="margin-top:.6rem;float:right"
-            data-i18n="app.sprache"></button>
+    <select id="sprache-gate" class="sprachwahl"
+            style="margin-top:.6rem;float:right"></select>
   </form>
 
   <form id="antrag-form" class="card" hidden>
@@ -60,7 +61,7 @@
     <span id="whoami" class="muted"></span>
     <button id="schloss" class="link"></button>
     <button id="pin-aendern" class="link" data-i18n="nav.pinAendern"></button>
-    <button id="sprache" class="link" data-i18n="app.sprache"></button>
+    <select id="sprache" class="sprachwahl"></select>
     <label class="muted" style="display:inline-flex;align-items:center;gap:.3rem;margin:0">
       <span data-i18n="app.zielsprache"></span>
       <select id="zielsprache" style="width:auto;padding:.15rem .3rem"></select>
@@ -86,6 +87,10 @@
     <section id="thread-pane" class="thread-pane">
       <div class="empty" data-i18n="forum.keinThema"></div>
     </section>
+
+    <!-- Erscheint, wenn waehrend des Lesens weiter oben neue Beitraege
+         eintreffen. Springt nur auf Klick ans Ende - siehe app.js. -->
+    <button type="button" id="neue-beitraege" class="neue-beitraege" hidden></button>
   </main>
 
   <!-- ----------------------------------------------------------- Agenten -->
@@ -376,6 +381,9 @@
   </form>
 </dialog>
 
+<!-- Liegt mit im Haus, nicht auf einem CDN: Agora soll auch in einem
+     Netz ohne Internetzugang vollstaendig laufen. -->
+<script src="/katex/katex.min.js"></script>
 <script src="/i18n.js"></script>
 <script src="/app.js"></script>
 </body>
