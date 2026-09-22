@@ -484,6 +484,76 @@ async def main_test() -> int:
                               json={"is_admin": False})
             assert r.status_code == 200, r.text
             print("[ok] Verwaltungsrechte wandern, der letzte Admin bleibt")
+
+            # --- Lesestand und Verschieben --------------------------------
+            # Zwei Foren uebereinander: der Punkt muss auch am Oberforum
+            # stehen, sonst sieht man ihn an einem zugeklappten Ast nie.
+            r = await c.post("/api/forums", headers=HEAD,
+                             json={"name": "Oben"})
+            oben = r.json()["id"]
+            r = await c.post("/api/forums", headers=HEAD,
+                             json={"name": "Unten", "parent_id": oben})
+            unten = r.json()["id"]
+
+            r = await c.post("/api/threads", headers=HEAD, json={
+                "title": "Liegt erst nirgends",
+                "goal": "Wird gleich verschoben.",
+                "agent_ids": [agents[0]["id"]],
+                "mode": "roundrobin", "max_rounds": 1, "pace_seconds": 0,
+                "start_now": False})
+            wandert = r.json()["id"]
+            assert r.json()["forum_id"] is None, r.json()
+
+            # Eigene Beitraege machen nichts ungelesen - wer schreibt, weiss es.
+            r = await c.post(f"/api/threads/{wandert}/posts", headers=HEAD,
+                             json={"content": "Von mir selbst."})
+            assert r.status_code in (200, 201), r.text
+            stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
+            assert wandert not in stand["threads"], stand
+
+            # Der Beitrag eines anderen schon.
+            r = await c.post(f"/api/threads/{wandert}/posts", headers=fremder_kopf,
+                             json={"content": "Von jemand anderem."})
+            assert r.status_code in (200, 201), r.text
+            stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
+            assert wandert in stand["threads"], stand
+            assert stand["ohne_forum"] is True, "liegt in keinem Forum"
+
+            # Verschieben ins untere Forum - der Punkt muss an BEIDEN haengen.
+            r = await c.patch(f"/api/threads/{wandert}", headers=HEAD,
+                              json={"forum_id": unten})
+            assert r.status_code == 200 and r.json()["forum_id"] == unten, r.text
+            stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
+            assert unten in stand["foren"], stand
+            assert oben in stand["foren"], "Punkt muss bis zur Wurzel durchschlagen"
+
+            # Gelesen melden - danach ist der Punkt weg.
+            r = await c.post(f"/api/threads/{wandert}/gelesen", headers=HEAD)
+            assert r.status_code == 204, r.text
+            stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
+            assert wandert not in stand["threads"], stand
+            assert oben not in stand["foren"], stand
+
+            # Ein Forum unter ein anderes haengen - so zieht man eine Ebene ein.
+            r = await c.patch(f"/api/forums/{unten}", headers=HEAD,
+                              json={"parent_id": None})
+            assert r.status_code == 200 and r.json()["parent_id"] is None, r.text
+            # Und kein Ring: Oben darf nicht unter sein eigenes Kind.
+            r = await c.patch(f"/api/forums/{unten}", headers=HEAD,
+                              json={"parent_id": oben})
+            assert r.status_code == 200, r.text
+            r = await c.patch(f"/api/forums/{oben}", headers=HEAD,
+                              json={"parent_id": unten})
+            assert r.status_code == 400, "Ring muss abgewiesen werden"
+
+            # Fremde Themen verschiebt man nicht - ausser als Admin.
+            r = await c.patch(f"/api/threads/{eigenes}", headers=HEAD,
+                              json={"forum_id": oben})
+            assert r.status_code == 200, "Admin darf aufraeumen"
+            r = await c.patch(f"/api/threads/{wandert}", headers=fremder_kopf,
+                              json={"forum_id": None})
+            assert r.status_code == 403, r.text
+            print("[ok] Lesestand stimmt, Themen und Foren lassen sich umhaengen")
             # Zustimmung nur eines Agenten darf nichts beenden - erst wenn
             # alle im selben Durchgang zustimmen, ist die Diskussion vorbei.
             EINIG = set()
@@ -1243,18 +1313,25 @@ async def main_test() -> int:
             print("[ok] Eingriff waehrend des Zuges wird nicht ueberschrieben")
 
             # --- Uebersetzen auf Knopfdruck --------------------------------
-            UEBERSETZT = {"n": 0}
+            UEBERSETZT = {"n": 0, "budget": 0}
 
             async def uebersetzer(agent, messages, max_tokens=None, dk=None):
                 UEBERSETZT["n"] += 1
+                UEBERSETZT["budget"] = max_tokens
                 inhalt = messages[0]["content"]
                 assert "Uebersetze den folgenden Forumsbeitrag" in inhalt, inhalt[:80]
-                return "Translated: " + inhalt.split("--- Beitrag ---")[1].strip()[:40]
+                quelle = inhalt.split("--- Beitrag ---")[1].strip()
+                # Das Budget zaehlt Token, die Quelle Zeichen. Kyrillisch
+                # braucht rund ein Token je 1,3 Zeichen - wer hier mit vier
+                # rechnet, schneidet russische Beitraege mitten im Satz ab.
+                assert max_tokens >= len(quelle) / 1.3, \
+                    f"Budget {max_tokens} zu knapp fuer {len(quelle)} Zeichen"
+                return "Translated: " + quelle[:40], "stop"
 
             beitraege = (await c.get(f"/api/threads/{thread['id']}/posts", headers=HEAD)).json()
             einer = [b for b in beitraege if b["author_type"] == "agent"][0]
 
-            llm.complete = uebersetzer
+            llm.vervollstaendige = uebersetzer
             r = await c.post(f"/api/posts/{einer['id']}/translate", headers=HEAD,
                              json={"ziel": "en"})
             assert r.status_code == 200, r.text

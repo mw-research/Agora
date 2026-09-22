@@ -259,6 +259,30 @@ class Participant(Base):
     agent: Mapped[Agent] = relationship(lazy="selectin")
 
 
+class Gelesen(Base):
+    """Bis wann jemand ein Thema gelesen hat.
+
+    Der gruene Punkt am Forum haengt hieran: gibt es darin ein Thema, dessen
+    letzter Beitrag juenger ist als dieser Zeitpunkt - oder ueberhaupt keine
+    Zeile fuer diese Person -, dann ist da etwas Neues.
+
+    Bewusst pro Thema und nicht pro Beitrag: das waeren bei einem Forum, das
+    Wochen laeuft, zehntausende Zeilen fuer denselben Zweck.
+    """
+
+    __tablename__ = "gelesen"
+
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    thread_id: Mapped[str] = mapped_column(
+        ForeignKey("threads.id", ondelete="CASCADE"), primary_key=True
+    )
+    gelesen_bis: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+
+
 class Uebersetzung(Base):
     """Einmal uebersetzt, immer da.
 

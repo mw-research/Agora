@@ -49,6 +49,7 @@ from .models import (
     Agent,
     Credential,
     Forum,
+    Gelesen,
     Participant,
     Post,
     Thread,
@@ -1314,6 +1315,131 @@ async def list_posts(
     )
 
 
+@app.patch("/api/threads/{thread_id}", response_model=schemas.ThreadOut)
+async def verschiebe_thread(
+    thread_id: str,
+    payload: schemas.ThreadUpdate,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Ein Thema umhaengen oder umbenennen.
+
+    Gedacht fuer den Fall, dass ein Thema im falschen Forum gelandet ist.
+    Die Kennung des Themas bleibt dabei dieselbe - deshalb braucht es hier
+    weder Umleitung noch alte URL, anders als in einem Forum, das seine
+    Adressen aus dem Forumsnamen baut.
+    """
+    thread = await session.get(Thread, thread_id)
+    if thread is None:
+        raise HTTPException(404, "Thread nicht gefunden")
+    if thread.creator_id != user.id and not user.is_admin:
+        raise HTTPException(403, "Nur wer das Thema eroeffnet hat, darf es verschieben.")
+
+    werte = payload.model_dump(exclude_unset=True)
+    if "forum_id" in werte and werte["forum_id"] is not None:
+        if await session.get(Forum, werte["forum_id"]) is None:
+            raise HTTPException(400, "Forum gibt es nicht")
+    for schluessel, wert in werte.items():
+        setattr(thread, schluessel, wert)
+    await session.commit()
+    await session.refresh(thread)
+
+    # Die Seitenleiste zeigt Themen nach Forum sortiert - ohne diese Meldung
+    # sieht sie die Verschiebung erst beim naechsten Laden.
+    await orchestrator.publish_thread(thread)
+    log.info("%s hat Thema %s verschoben", user.name, thread.id)
+    return thread
+
+
+@app.post("/api/threads/{thread_id}/gelesen", status_code=204)
+async def thema_gelesen(
+    thread_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Merken, dass diese Person hier auf dem Laufenden ist.
+
+    Die Oberflaeche ruft das beim Oeffnen eines Themas und danach bei jedem
+    neuen Beitrag, den sie tatsaechlich anzeigt. Fehlschlaege sind egal - im
+    schlimmsten Fall leuchtet ein Punkt einmal zu lang.
+    """
+    if await session.get(Thread, thread_id) is None:
+        raise HTTPException(404, "Thread nicht gefunden")
+    stand = await session.get(Gelesen, {"user_id": user.id, "thread_id": thread_id})
+    if stand is None:
+        session.add(Gelesen(user_id=user.id, thread_id=thread_id, gelesen_bis=utcnow()))
+    else:
+        stand.gelesen_bis = utcnow()
+    await session.commit()
+    return Response(status_code=204)
+
+
+@app.get("/api/ungelesen", response_model=schemas.UngelesenOut)
+async def ungelesen(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Wo liegt etwas, das diese Person noch nicht gesehen hat?
+
+    Ein Thema gilt als ungelesen, wenn sein juengster Beitrag nach dem
+    gemerkten Zeitpunkt liegt - oder wenn es dafuer noch gar keine Zeile
+    gibt und ueberhaupt ein Beitrag darin steht. Eigene Beitraege zaehlen
+    nicht: wer selbst geschrieben hat, weiss es.
+
+    Der Punkt wandert bis zur Wurzel hinauf, sonst bliebe er an einem
+    zugeklappten Ast unsichtbar.
+    """
+    letzter = (
+        select(Post.thread_id, func.max(Post.created_at).label("zuletzt"))
+        .where(Post.user_id.is_distinct_from(user.id))
+        .group_by(Post.thread_id)
+        .subquery()
+    )
+    zeilen = (
+        await session.execute(
+            select(Thread.id, Thread.forum_id, letzter.c.zuletzt, Gelesen.gelesen_bis)
+            .join(letzter, letzter.c.thread_id == Thread.id)
+            .outerjoin(
+                Gelesen,
+                (Gelesen.thread_id == Thread.id) & (Gelesen.user_id == user.id),
+            )
+        )
+    ).all()
+
+    themen: list[str] = []
+    foren: set[str] = set()
+    ohne_forum = False
+    for thread_id, forum_id, zuletzt, gelesen_bis in zeilen:
+        if gelesen_bis is not None and as_utc(zuletzt) <= as_utc(gelesen_bis):
+            continue
+        themen.append(thread_id)
+        if forum_id is None:
+            ohne_forum = True
+        else:
+            foren.add(forum_id)
+
+    # Nach oben durchreichen, damit der Punkt auch am Oberforum steht.
+    if foren:
+        eltern = dict(
+            (await session.execute(select(Forum.id, Forum.parent_id))).all()
+        )
+        vollstaendig = set(foren)
+        for start in foren:
+            lauf = eltern.get(start)
+            # Die Schleife ist gegen Ringe abgesichert; die API verhindert
+            # sie zwar, aber ein Abbild von aussen koennte welche enthalten.
+            gesehen = {start}
+            while lauf and lauf not in gesehen:
+                vollstaendig.add(lauf)
+                gesehen.add(lauf)
+                lauf = eltern.get(lauf)
+        foren = vollstaendig
+
+    return schemas.UngelesenOut(
+        threads=themen, foren=sorted(foren), ohne_forum=ohne_forum
+    )
+
+
 @app.post("/api/threads/{thread_id}/posts", response_model=schemas.PostOut, status_code=201)
 async def create_post(
     thread_id: str,
@@ -1593,6 +1719,27 @@ async def _uebersetzer(session: AsyncSession, user: User) -> tuple[Agent, bytes 
     return agent, None
 
 
+def _token_budget(quelle: str) -> int:
+    """Wie viele Token die Uebersetzung hoechstens brauchen darf.
+
+    Hier lag ein Fehler, der lange unsichtbar war: das Budget stand auf
+    min(4000, len(quelle) + 500) - und len() zaehlt ZEICHEN, max_tokens
+    zaehlt TOKEN. Solange Quelle und Ziel lateinisch sind, geht die Rechnung
+    durch Zufall auf, weil ein Token dort etwa vier Zeichen deckt.
+
+    Kyrillisch nicht. Dort kommen auf ein Token eher anderthalb Zeichen, ein
+    Beitrag von 8000 Zeichen braucht also gut 5000 Token - und riss die feste
+    Obergrenze von 4000. Das Modell hoerte mitten im Satz auf.
+
+    Deshalb wird jetzt mit dem ungeguenstigsten Verhaeltnis gerechnet, nicht
+    mit dem bequemsten. Ein zu grosses Budget kostet nichts: bezahlt werden
+    die Token, die tatsaechlich herauskommen.
+    """
+    # Ein Token deckt im schlechtesten Fall etwa 1,3 Zeichen (Kyrillisch,
+    # Griechisch, CJK). Plus Luft fuer Formatierung, die stehen bleibt.
+    return min(16000, int(len(quelle) / 1.3) + 500)
+
+
 @app.post("/api/posts/{post_id}/translate", response_model=schemas.TranslateOut)
 async def translate_post(
     post_id: str,
@@ -1644,15 +1791,20 @@ async def translate_post(
         f"--- Beitrag ---\n{quelle}"
     )
     try:
-        text = await llm.complete(
+        text, grund = await llm.vervollstaendige(
             agent,
             [{"role": "user", "content": auftrag}],
-            max_tokens=min(4000, len(quelle) + 500),
+            max_tokens=_token_budget(quelle),
             dk=dk,
         )
     except llm.LLMError as exc:
         raise HTTPException(502, f"Uebersetzung fehlgeschlagen: {exc}") from exc
 
+    if grund == "length":
+        # Das Budget hat trotzdem nicht gereicht. Lieber sagen als so tun,
+        # als waere das der ganze Text.
+        text += "\n\n[... die Uebersetzung bricht hier ab: das Modell hat sein "
+        text += "Token-Budget erreicht.]"
     if gekuerzt:
         text += "\n\n[... gekuerzt: nur die ersten "
         text += f"{UEBERSETZUNG_MAX} Zeichen wurden uebersetzt.]"

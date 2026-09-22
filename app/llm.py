@@ -140,10 +140,15 @@ async def stream(
     yield "usage", "", usage
 
 
-async def complete(
+async def vervollstaendige(
     agent: Agent, messages: list[dict], max_tokens: int | None = None, dk: bytes | None = None
-) -> str:
-    """Einmaliger Aufruf ohne Streaming - fuer die Sprecherwahl des Moderators."""
+) -> tuple[str, str | None]:
+    """Wie complete(), gibt aber auch den Abbruchgrund zurueck.
+
+    Der Grund ist der einzige Weg zu erfahren, ob eine Antwort zu Ende war
+    oder am Token-Budget abgeschnitten wurde. Ohne ihn endet ein zu langer
+    Text stumm mitten im Satz und sieht aus wie ein Modellfehler.
+    """
     kwargs = _call_kwargs(agent, dk)
     if max_tokens is not None:
         kwargs["max_tokens"] = max_tokens
@@ -151,7 +156,16 @@ async def complete(
         response = await litellm.acompletion(messages=messages, **kwargs)
     except Exception as exc:
         raise LLMError(f"{type(exc).__name__}: {exc}") from exc
-    return (response.choices[0].message.content or "").strip()
+    wahl = response.choices[0]
+    return (wahl.message.content or "").strip(), getattr(wahl, "finish_reason", None)
+
+
+async def complete(
+    agent: Agent, messages: list[dict], max_tokens: int | None = None, dk: bytes | None = None
+) -> str:
+    """Einmaliger Aufruf ohne Streaming - fuer die Sprecherwahl des Moderators."""
+    text, _ = await vervollstaendige(agent, messages, max_tokens, dk)
+    return text
 
 
 def _usage_dict(usage) -> dict:

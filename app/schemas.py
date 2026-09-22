@@ -168,6 +168,28 @@ class ForumUpdate(BaseModel):
     position: int | None = None
 
 
+class ThreadUpdate(BaseModel):
+    """Ein Thema umhaengen oder umbenennen.
+
+    forum_id traegt drei Bedeutungen, deshalb die Sonderbehandlung in der
+    API: nicht mitgeschickt = nichts aendern, None = aus allen Foren heraus,
+    eine Kennung = dorthin.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    forum_id: str | None = None
+
+
+class UngelesenOut(BaseModel):
+    # Themen mit Beitraegen, die diese Person noch nicht gesehen hat.
+    threads: list[str] = []
+    # Foren, in denen solche Themen liegen - samt aller Foren darueber,
+    # damit der Punkt auch an einem zugeklappten Ast sichtbar ist.
+    foren: list[str] = []
+    # Gibt es Ungelesenes, das in gar keinem Forum liegt?
+    ohne_forum: bool = False
+
+
 class ForumOut(ORMModel):
     id: str
     name: str
