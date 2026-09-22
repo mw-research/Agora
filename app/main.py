@@ -24,7 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import (
@@ -63,7 +63,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.28.0"
+APP_VERSION = "0.29.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -496,6 +496,112 @@ async def _nutzer_anlegen(
     return schemas.UserCreated(
         id=user.id, name=user.name, is_admin=user.is_admin, token=token, expires_at=ablauf
     )
+
+
+@app.patch("/api/users/{user_id}", response_model=schemas.UserOut)
+async def set_user_rechte(
+    user_id: str,
+    payload: schemas.UserRechte,
+    admin: User = Depends(admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Verwaltungsrechte geben oder nehmen.
+
+    Der eigentliche Zweck: das Installationskonto entmachten. Es laesst sich
+    nicht loeschen, weil der naechste Start es aus AGORA_ADMIN_TOKEN wieder
+    anlegt - aber sobald es ein eigenes Admin-Konto gibt, braucht es seine
+    Rechte nicht mehr und wird zum blossen Notschluessel.
+
+    Zwei Sperren: niemand nimmt sich selbst die Rechte (das waere die Tuer
+    hinter sich zuziehen), und der letzte Admin bleibt Admin.
+    """
+    person = await session.get(User, user_id)
+    if person is None:
+        raise HTTPException(404, "Person nicht gefunden")
+    if person.id == admin.id:
+        raise HTTPException(400, "Die eigenen Rechte kann man nicht aendern.")
+    if person.is_admin and not payload.is_admin:
+        uebrig = (
+            await session.execute(
+                select(func.count())
+                .select_from(User)
+                .where(User.is_admin.is_(True), User.id != person.id)
+            )
+        ).scalar_one()
+        if uebrig == 0:
+            raise HTTPException(400, "Das Forum braucht mindestens einen Admin.")
+
+    person.is_admin = payload.is_admin
+    await session.commit()
+    log.warning(
+        "Admin %s hat %s die Verwaltungsrechte %s",
+        admin.name, person.name, "gegeben" if payload.is_admin else "genommen",
+    )
+    return person
+
+
+@app.delete("/api/users/{user_id}", status_code=200)
+async def delete_user(
+    user_id: str,
+    admin: User = Depends(admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Eine Person entfernen - ihre Themen bleiben.
+
+    Der Punkt, um den sich alles dreht: threads.creator_id haengt mit
+    ON DELETE CASCADE an der Person. Wer sie einfach loescht, loescht
+    damit JEDE von ihr eroeffnete Diskussion samt aller Beitraege darin -
+    auch der Beitraege anderer Leute. Deshalb werden die Themen vorher
+    uebergeben.
+
+    Was mitgeht, ist persoenlich und ohne die Person ohnehin wertlos: ihre
+    Modell-Zugaenge (nur mit ihrer PIN zu oeffnen) und ihre Agenten. Die
+    Beitraege dieser Agenten bleiben stehen - posts.agent_id ist bewusst
+    kein Fremdschluessel, und der Name steht am Beitrag.
+    """
+    person = await session.get(User, user_id)
+    if person is None:
+        raise HTTPException(404, "Person nicht gefunden")
+    if person.id == admin.id:
+        raise HTTPException(400, "Sich selbst kann man nicht loeschen.")
+    if person.name == "admin":
+        raise HTTPException(
+            400,
+            "Das Installationskonto laesst sich nicht loeschen - der naechste "
+            "Start legt es aus AGORA_ADMIN_TOKEN ohnehin wieder an. Nimm ihm "
+            "stattdessen die Verwaltungsrechte, sobald du ein eigenes "
+            "Admin-Konto hast.",
+        )
+
+    # Themen uebergeben, statt sie mitzureissen.
+    uebergeben = (
+        await session.execute(
+            update(Thread)
+            .where(Thread.creator_id == person.id)
+            .values(creator_id=admin.id)
+        )
+    ).rowcount
+
+    agenten = (
+        await session.execute(select(Agent).where(Agent.owner_id == person.id))
+    ).scalars().all()
+    zugaenge = (
+        await session.execute(select(Credential).where(Credential.owner_id == person.id))
+    ).scalars().all()
+
+    await session.delete(person)
+    await session.commit()
+
+    log.warning(
+        "Admin %s hat %s geloescht (%d Themen uebernommen, %d Agenten, %d Zugaenge)",
+        admin.name, person.name, uebergeben, len(agenten), len(zugaenge),
+    )
+    return {
+        "geloescht": person.name,
+        "themen_uebernommen": uebergeben,
+        "agenten_entfernt": len(agenten),
+        "zugaenge_entfernt": len(zugaenge),
+    }
 
 
 @app.post("/api/users/{user_id}/reset", response_model=schemas.UserCreated)

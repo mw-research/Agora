@@ -2,6 +2,7 @@
 import asyncio
 import os
 import pathlib
+import re
 import sys
 import tempfile
 
@@ -386,6 +387,103 @@ async def main_test() -> int:
             assert r.status_code == 401
             r = await c.get("/api/users", headers={"Authorization": f"Bearer {other}"})
             assert r.status_code == 403
+
+            # --- Person loeschen ------------------------------------------
+            # threads.creator_id haengt mit ON DELETE CASCADE an der Person.
+            # Ohne Uebergabe risse ein Loeschen jede von ihr eroeffnete
+            # Diskussion mit - samt der Beitraege aller anderen.
+            # Dafuer ein eigenes Konto: 'kollege' wird spaeter noch gebraucht.
+            r = await c.post("/api/users", headers=HEAD, json={"name": "wegwerf"})
+            assert r.status_code == 201, r.text
+            r = await anmelden(r.json()["token"], "Wegwerf-PIN-42")
+            assert r.status_code == 200, r.text
+            weg_kopf = {"Authorization": f"Bearer {r.json()['new_token']}"}
+
+            r = await c.post("/api/agents", headers=weg_kopf,
+                             json={"name": "Verganglich", "model": "openai/x"})
+            assert r.status_code == 201, r.text
+            weg_agent = r.json()["id"]
+
+            r = await c.post("/api/threads", headers=weg_kopf, json={
+                "title": "Bleibt bitte stehen",
+                "goal": "Soll das Loeschen ueberleben.",
+                "agent_ids": [weg_agent],
+                "mode": "roundrobin", "max_rounds": 1, "pace_seconds": 0,
+                "start_now": False})
+            assert r.status_code == 201, r.text
+            bleibt = r.json()["id"]
+            r = await c.post(f"/api/threads/{bleibt}/posts", headers=weg_kopf,
+                             json={"content": "Ein Satz, der nicht verschwinden darf."})
+            assert r.status_code in (200, 201), r.text
+
+            leute = (await c.get("/api/users", headers=HEAD)).json()
+
+            # Das Installationskonto bleibt tabu - der Start legt es ohnehin
+            # wieder an.
+            ich = next(x for x in leute if x["name"] == "admin")
+            r = await c.delete(f"/api/users/{ich['id']}", headers=HEAD)
+            assert r.status_code == 400, r.text
+
+            wegwerf = next(x for x in leute if x["name"] == "wegwerf")
+            r = await c.delete(f"/api/users/{wegwerf['id']}", headers=HEAD)
+            assert r.status_code == 200, r.text
+            ergebnis = r.json()
+            assert ergebnis["themen_uebernommen"] >= 1, ergebnis
+            assert ergebnis["agenten_entfernt"] >= 1, ergebnis
+
+            # Das Thema steht noch, mit seinem Beitrag.
+            zustand = await c.get(f"/api/threads/{bleibt}", headers=HEAD)
+            assert zustand.status_code == 200, "das Thema wurde mitgerissen!"
+            beitraege = (await c.get(f"/api/threads/{bleibt}/posts", headers=HEAD)).json()
+            assert any("nicht verschwinden darf" in (b["content"] or "")
+                       for b in beitraege), beitraege
+            # Und es gehoert jetzt dem, der geloescht hat.
+            assert zustand.json()["creator_id"] == me["id"], zustand.json()
+
+            # Die Person ist fort, ihr Token taugt nicht mehr.
+            danach = (await c.get("/api/users", headers=HEAD)).json()
+            assert not any(x["name"] == "wegwerf" for x in danach), danach
+            r = await c.get("/api/me", headers=weg_kopf)
+            assert r.status_code == 401, r.text
+            print("[ok] Person geloescht, ihre Themen und Beitraege bleiben")
+
+            # --- Verwaltungsrechte ----------------------------------------
+            # Das Installationskonto laesst sich nicht loeschen, aber
+            # entmachten - sobald es ein zweites Admin-Konto gibt.
+            kollege_id = next(x["id"] for x in danach if x["name"] == "kollege")
+            r = await c.patch(f"/api/users/{kollege_id}", headers=HEAD,
+                              json={"is_admin": True})
+            assert r.status_code == 200 and r.json()["is_admin"] is True, r.text
+            # Jetzt darf der Kollege selbst verwalten.
+            r = await c.get("/api/users", headers=fremder_kopf)
+            assert r.status_code == 200, r.text
+
+            # Die eigenen Rechte bleiben unantastbar - sonst schliesst man
+            # sich selbst aus.
+            r = await c.patch(f"/api/users/{me['id']}", headers=HEAD,
+                              json={"is_admin": False})
+            assert r.status_code == 400, r.text
+
+            # Der Kollege nimmt dem Installationskonto die Rechte ab.
+            r = await c.patch(f"/api/users/{ich['id']}", headers=fremder_kopf,
+                              json={"is_admin": False})
+            assert r.status_code == 200 and r.json()["is_admin"] is False, r.text
+            r = await c.get("/api/users", headers=HEAD)
+            assert r.status_code == 403, "entmachtet heisst entmachtet"
+
+            # Und der letzte Admin bleibt Admin.
+            r = await c.patch(f"/api/users/{kollege_id}", headers=fremder_kopf,
+                              json={"is_admin": False})
+            assert r.status_code == 400, r.text
+
+            # Zuruecksetzen, der Rest des Tests laeuft als admin weiter.
+            r = await c.patch(f"/api/users/{ich['id']}", headers=fremder_kopf,
+                              json={"is_admin": True})
+            assert r.status_code == 200, r.text
+            r = await c.patch(f"/api/users/{kollege_id}", headers=HEAD,
+                              json={"is_admin": False})
+            assert r.status_code == 200, r.text
+            print("[ok] Verwaltungsrechte wandern, der letzte Admin bleibt")
             # Zustimmung nur eines Agenten darf nichts beenden - erst wenn
             # alle im selben Durchgang zustimmen, ist die Diskussion vorbei.
             EINIG = set()
@@ -995,6 +1093,21 @@ async def main_test() -> int:
                 schluessel = f'"neuesThema.art{kunst[:1].upper()}{kunst[1:]}"'
                 assert i18n.count(schluessel) == sprachen, \
                     f"{schluessel} fehlt in einer der {sprachen} Sprachen"
+
+            # Und gleich alle Beschriftungen: jeder Sprachblock muss
+            # dieselben Schluessel tragen. Eine einzelne vergessene Zeile
+            # faellt in der Oberflaeche sonst niemandem auf.
+            anfaenge = [m.start() for m in
+                        re.finditer(r'^[ ]{4}"app\.untertitel"', i18n, re.M)]
+            grenzen = anfaenge + [len(i18n)]
+            bloecke = [
+                set(re.findall(r'^[ ]{4}"([a-zA-Z0-9._]+)":', i18n[a:e], re.M))
+                for a, e in zip(anfaenge, grenzen[1:])
+            ]
+            alle = set().union(*bloecke)
+            for nummer, block in enumerate(bloecke):
+                assert block == alle, \
+                    f"Sprachblock {nummer} fehlt: {sorted(alle - block)}"
             print("[ok] Art der Diskussion steuert den Auftrag der Agenten")
 
             # --- Grundlage beim Anlegen ------------------------------------

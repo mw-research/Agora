@@ -278,6 +278,17 @@ const TEXTE = {
     "person.pinZuruecksetzen": "PIN zurücksetzen",
     "person.pinZuruecksetzenTitel":
       "Wenn auch die PIN weg ist – löscht die Modell-Zugänge",
+    "person.loeschen": "Person löschen",
+    "person.rechteGeben": "Zum Admin machen",
+    "person.rechteNehmen": "Verwaltungsrechte nehmen",
+    "person.rechteTitel":
+      "Admins verwalten Personen und Zugangsanträge. Der letzte Admin bleibt Admin.",
+    "person.loeschenTitel": "Entfernt die Person; ihre Themen bleiben",
+    "person.loeschenFrage":
+      "{name} wirklich löschen?\n\nIhre Modell-Zugänge und Agenten gehen " +
+      "mit. Die von ihr eröffneten Themen bleiben erhalten und gehen an " +
+      "dich über.",
+    "person.geloescht": "{name} gelöscht. Übernommene Themen: {themen}",
     "person.fragePin":
       "{name}: PIN UND Token zurücksetzen?\n\nAlle Modell-Zugänge dieser Person " +
       "werden dabei gelöscht – sonst wäre das ein Weg, ein Konto samt " +
@@ -588,6 +599,17 @@ const TEXTE = {
     "person.pinZuruecksetzen": "Reset PIN",
     "person.pinZuruecksetzenTitel":
       "If the PIN is gone too – deletes the model credentials",
+    "person.loeschen": "Delete person",
+    "person.rechteGeben": "Make admin",
+    "person.rechteNehmen": "Revoke admin rights",
+    "person.rechteTitel":
+      "Admins manage people and access requests. The last admin stays admin.",
+    "person.loeschenTitel": "Removes the person; their topics stay",
+    "person.loeschenFrage":
+      "Really delete {name}?\n\nTheir model credentials and agents go " +
+      "with them. The topics they opened stay and are handed over to " +
+      "you.",
+    "person.geloescht": "{name} deleted. Topics taken over: {themen}",
     "person.fragePin":
       "{name}: reset PIN AND token?\n\nAll model credentials of this person will " +
       "be deleted – otherwise this would be a way to take over an account " +
@@ -724,6 +746,7 @@ const TEXTE = {
     "thread.dateiHinweis": 
       "PDF, Word, PowerPoint, OpenDocument, HTML, текст – " +
       "извлекается текст, сам файл не сохраняется.",
+    "thread.dateiLaeuft": 'Файл "{name}" читается ...',
     "thread.dokumentWeg": "Убрать документ из обсуждения",
     "thread.runde": "Раунд",
     "thread.mensch": "Человек",
@@ -904,6 +927,16 @@ const TEXTE = {
     "person.neuesTokenTitel": "Если токен потерян – PIN-код остаётся",
     "person.pinZuruecksetzen": "Сбросить PIN-код",
     "person.pinZuruecksetzenTitel": "Если и PIN-код потерян – удаляет доступы к моделям",
+    "person.loeschen": "Удалить человека",
+    "person.rechteGeben": "Сделать администратором",
+    "person.rechteNehmen": "Забрать права администратора",
+    "person.rechteTitel":
+      "Администраторы управляют людьми и заявками на доступ. Последний администратор остаётся администратором.",
+    "person.loeschenTitel": "Убирает человека; его темы остаются",
+    "person.loeschenFrage":
+      "Действительно удалить {name}?\n\nЕго доступы к моделям и " +
+      "агенты будут удалены. Открытые им темы сохранятся и перейдут к вам.",
+    "person.geloescht": "{name} удалён. Перешло тем: {themen}",
     "person.fragePin": 
       "{name}: сбросить PIN-код И токен?  Все доступы этого " +
       "человека к моделям будут удалены – иначе это был бы способ " +

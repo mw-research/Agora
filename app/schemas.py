@@ -37,6 +37,12 @@ class UserCreate(BaseModel):
     is_admin: bool = False
 
 
+class UserRechte(BaseModel):
+    # Verwaltungsrechte geben oder nehmen. Damit laesst sich das
+    # Installationskonto entmachten, sobald es ein eigenes Admin-Konto gibt.
+    is_admin: bool
+
+
 class UserOut(ORMModel):
     id: str
     name: str

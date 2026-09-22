@@ -1241,7 +1241,49 @@ async function loadUsers() {
       notausgang.title = t("person.pinZuruecksetzenTitel");
       notausgang.addEventListener("click", () => zuruecksetzen(true));
 
-      knoepfe.append(neu, notausgang);
+      // Verwaltungsrechte geben oder nehmen. Genau so wird das
+      // Installationskonto zum blossen Notschluessel, sobald es ein
+      // eigenes Admin-Konto gibt.
+      const rechte = document.createElement("button");
+      rechte.textContent = user.is_admin ? t("person.rechteNehmen") : t("person.rechteGeben");
+      rechte.title = t("person.rechteTitel");
+      rechte.addEventListener("click", async () => {
+        try {
+          await api(`/api/users/${user.id}`, {
+            method: "PATCH",
+            body: JSON.stringify({ is_admin: !user.is_admin }),
+          });
+          await loadUsers();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+      knoepfe.append(rechte);
+
+      // Das Installationskonto laesst der Server nicht loeschen - also
+      // hier auch keinen Knopf dafuer anbieten.
+      if (user.name !== "admin") {
+        const weg = document.createElement("button");
+        weg.className = "danger";
+        weg.textContent = t("person.loeschen");
+        weg.title = t("person.loeschenTitel");
+        weg.addEventListener("click", async () => {
+          if (!confirm(t("person.loeschenFrage", { name: user.name }))) return;
+          try {
+            const ergebnis = await api(`/api/users/${user.id}`, { method: "DELETE" });
+            alert(t("person.geloescht", {
+              name: ergebnis.geloescht,
+              themen: ergebnis.themen_uebernommen,
+            }));
+            await loadUsers();
+          } catch (error) {
+            alert(error.message);
+          }
+        });
+        knoepfe.append(neu, notausgang, weg);
+      } else {
+        knoepfe.append(neu, notausgang);
+      }
       card.appendChild(knoepfe);
     }
 
