@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     admin_token: str = ""
     database_url: str = "sqlite+aiosqlite:///./agora.db"
 
+    # Wie viel eigenes Material ein Agent hoechstens tragen darf, in Zeichen
+    # ueber alle seine Unterlagen zusammen. Das liegt in JEDEM seiner
+    # Aufrufe - wie die Persona -, die Kosten wachsen also mit jeder Runde.
+    # 12000 Zeichen sind grob 3500 Token; bei fuenfzig eigenen Zuegen in
+    # einer langen Diskussion also etwa 175000 zusaetzliche Eingabe-Token.
+    wissen_zeichen: int = 12_000
+
     worker_enabled: bool = True
     worker_interval: float = 2.0
 

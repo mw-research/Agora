@@ -56,6 +56,7 @@ from .models import (
     Thread,
     Uebersetzung,
     User,
+    Wissen,
     as_utc,
     utcnow,
 )
@@ -65,7 +66,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.31.1"
+APP_VERSION = "0.32.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1081,7 +1082,7 @@ async def modelle_auflisten(
 async def list_agents(
     user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
 ):
-    return (
+    gefunden = (
         (
             await session.execute(
                 select(Agent)
@@ -1092,6 +1093,7 @@ async def list_agents(
         .scalars()
         .all()
     )
+    return await _mit_aktenvermerk(session, list(gefunden))
 
 
 @app.post("/api/agents", response_model=schemas.AgentOut, status_code=201)
@@ -1134,6 +1136,141 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     return agent
+
+
+async def _mit_aktenvermerk(
+    session: AsyncSession, agenten: list[Agent]
+) -> list[schemas.AgentOut]:
+    """Agenten ausliefern und dazuschreiben, wie viele Unterlagen sie tragen.
+
+    Nur die Anzahl. Wer mitliest, soll sehen koennen, dass ein Teilnehmer aus
+    Material argumentiert, das sonst niemand hat - sonst wirkt sein
+    Widerspruch grundlos und die Diskussion ist von aussen nicht zu
+    verstehen. Was in den Unterlagen steht, geht deshalb trotzdem niemanden
+    an ausser dem Besitzer.
+    """
+    if not agenten:
+        return []
+    zahlen = dict(
+        (
+            await session.execute(
+                select(Wissen.agent_id, func.count())
+                .where(Wissen.agent_id.in_([a.id for a in agenten]))
+                .group_by(Wissen.agent_id)
+            )
+        ).all()
+    )
+    hinaus = []
+    for agent in agenten:
+        eintrag = schemas.AgentOut.model_validate(agent)
+        eintrag.wissen_dateien = zahlen.get(agent.id, 0)
+        hinaus.append(eintrag)
+    return hinaus
+
+
+async def _eigener_agent(session: AsyncSession, user: User, agent_id: str) -> Agent:
+    """Den Agenten holen - aber nur den eigenen.
+
+    Die Handakte gehoert dem Besitzer, sonst niemandem. Auch keinem Admin:
+    das Material liegt dort, damit dieser eine Agent eine andere Sicht hat,
+    nicht damit es jemand einsammelt.
+    """
+    agent = await session.get(Agent, agent_id)
+    if agent is None or agent.owner_id != user.id:
+        raise HTTPException(404, "Agent nicht gefunden")
+    return agent
+
+
+@app.get("/api/agents/{agent_id}/wissen", response_model=list[schemas.WissenOut])
+async def list_wissen(
+    agent_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _eigener_agent(session, user, agent_id)
+    return (
+        (
+            await session.execute(
+                select(Wissen).where(Wissen.agent_id == agent_id).order_by(Wissen.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+@app.post("/api/agents/{agent_id}/wissen", response_model=schemas.WissenOut, status_code=201)
+async def add_wissen(
+    agent_id: str,
+    datei: UploadFile = File(...),
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Dem Agenten Unterlagen mitgeben, die nur er kennt.
+
+    Wie bei den Dokumenten an einem Thema wird die Datei nicht aufbewahrt:
+    der Text wird herausgeholt, die Bytes verworfen.
+
+    Der Deckel ist kein Schoenheitsfehler. Das Material liegt in JEDEM
+    Aufruf dieses Agenten, genau wie seine Persona - wer hier 40000 Zeichen
+    ablegt, zahlt sie in jeder einzelnen Runde noch einmal.
+    """
+    await _eigener_agent(session, user, agent_id)
+
+    rohdaten = await datei.read()
+    name = (datei.filename or "unterlage").strip()
+    try:
+        text, gekuerzt = dokumente.text_gewinnen(name, rohdaten)
+    except dokumente.DokumentFehler as exc:
+        raise HTTPException(400, str(exc)) from exc
+    finally:
+        del rohdaten
+
+    if not text.strip():
+        raise HTTPException(400, "Aus der Datei kam kein Text heraus.")
+
+    grenze = get_settings().wissen_zeichen
+    belegt = (
+        await session.execute(
+            select(func.coalesce(func.sum(Wissen.zeichen), 0)).where(
+                Wissen.agent_id == agent_id
+            )
+        )
+    ).scalar_one()
+    frei = grenze - belegt
+    if len(text) > frei:
+        raise HTTPException(
+            400,
+            f"Das passt nicht mehr: {len(text)} Zeichen, frei sind noch {max(frei, 0)} "
+            f"von {grenze}. Das Material liegt in jedem Aufruf dieses Agenten - "
+            "nimm etwas heraus oder kuerze die Unterlage.",
+        )
+
+    stueck = Wissen(agent_id=agent_id, name=name, text=text, zeichen=len(text))
+    session.add(stueck)
+    await session.commit()
+    await session.refresh(stueck)
+    log.info(
+        "%s legt '%s' (%d Zeichen%s) in die Handakte von Agent %s",
+        user.name, name, len(text), ", gekuerzt" if gekuerzt else "", agent_id,
+    )
+    return stueck
+
+
+@app.delete("/api/agents/{agent_id}/wissen/{wissen_id}", status_code=204)
+async def remove_wissen(
+    agent_id: str,
+    wissen_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    await _eigener_agent(session, user, agent_id)
+    stueck = await session.get(Wissen, wissen_id)
+    if stueck is None or stueck.agent_id != agent_id:
+        raise HTTPException(404, "Nicht gefunden")
+    await session.delete(stueck)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @app.delete("/api/agents/{agent_id}", status_code=204)
@@ -1562,7 +1699,7 @@ async def create_thread(
 
     return schemas.ThreadDetail(
         **schemas.ThreadOut.model_validate(thread).model_dump(),
-        participants=[schemas.AgentOut.model_validate(a) for a in agents],
+        participants=await _mit_aktenvermerk(session, agents),
     )
 
 
@@ -1576,7 +1713,7 @@ async def get_thread(
     participants = await orchestrator.list_participants(session, thread_id)
     return schemas.ThreadDetail(
         **schemas.ThreadOut.model_validate(thread).model_dump(),
-        participants=[schemas.AgentOut.model_validate(a) for a in participants],
+        participants=await _mit_aktenvermerk(session, participants),
     )
 
 
@@ -1833,7 +1970,7 @@ async def add_participant(
     teilnehmer = await orchestrator.list_participants(session, thread_id)
     return schemas.ThreadDetail(
         **schemas.ThreadOut.model_validate(thread).model_dump(),
-        participants=[schemas.AgentOut.model_validate(a) for a in teilnehmer],
+        participants=await _mit_aktenvermerk(session, teilnehmer),
     )
 
 

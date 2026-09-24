@@ -170,6 +170,36 @@ class Agent(Base):
     credential: Mapped[Credential | None] = relationship(lazy="selectin")
 
 
+class Wissen(Base):
+    """Unterlagen, die nur einem Agenten vorliegen.
+
+    Der Zweck ist eine wirklich andere Ausgangslage: wer etwas weiss, was die
+    anderen nicht wissen, argumentiert anders - und das ist der Unterschied
+    zwischen vier Stimmen und vier Perspektiven.
+
+    Der Text wird beim Hochladen einmal aus der Datei gewonnen und liegt hier
+    als Text. Die Datei selbst wird nicht aufbewahrt, genauso wie bei den
+    Dokumenten an einem Thema.
+
+    KEIN Tresor: der Text liegt im Klartext, und der Agent darf daraus
+    zitieren - sonst nuetzte ihm das Wissen in der Debatte nichts. Es ist
+    asymmetrische Eingabe, kein Geheimnis.
+    """
+
+    __tablename__ = "wissen"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    agent_id: Mapped[str] = mapped_column(
+        ForeignKey("agents.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(200))
+    text: Mapped[str] = mapped_column(Text, default="")
+    # Laenge doppelt gefuehrt, damit die Liste den Umfang zeigen kann, ohne
+    # jedes Mal den ganzen Text zu holen.
+    zeichen: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class Forum(Base):
     """Ordner fuer Themen, beliebig tief schachtelbar.
 

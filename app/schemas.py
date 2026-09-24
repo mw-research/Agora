@@ -140,6 +140,12 @@ class AgentUpdate(BaseModel):
     is_public: bool | None = None
 
 
+class WissenOut(ORMModel):
+    id: str
+    name: str
+    zeichen: int
+
+
 class AgentOut(ORMModel):
     id: str
     owner_id: str
@@ -151,6 +157,10 @@ class AgentOut(ORMModel):
     temperature: float
     max_tokens: int
     is_public: bool
+    # Nur die ANZAHL, nie die Namen und nie der Inhalt. Mitlesende sollen
+    # sehen, dass jemand aus eigenem Material argumentiert - sonst wirkt der
+    # Widerspruch grundlos. Was darin steht, geht sie nichts an.
+    wissen_dateien: int = 0
 
 
 # --- Forum ------------------------------------------------------------------

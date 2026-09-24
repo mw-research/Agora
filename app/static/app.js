@@ -14,10 +14,13 @@ let FORUM_FILTER = "";   // "" = alle, "-" = ohne Forum, sonst forum_id
 
 // ---------------------------------------------------------------- API ----
 async function api(path, options = {}) {
+  // Bei einer Datei darf KEIN Content-Type gesetzt werden: der
+  // multipart-Trennstring steht mit darin, und den kennt nur der Browser.
+  const istDatei = options.body instanceof FormData;
   const response = await fetch(path, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(istDatei ? {} : { "Content-Type": "application/json" }),
       Authorization: `Bearer ${TOKEN}`,
       // Zusaetzlich, falls eine vorgelagerte Middleware den
       // Authorization-Header fuer sich beansprucht.
@@ -35,23 +38,9 @@ async function api(path, options = {}) {
 }
 
 async function dokumentHochladen(threadId, datei) {
-  // Nicht ueber api(): dort steht Content-Type auf JSON, und den
-  // multipart-Trennstring muss der Browser selbst setzen.
   const inhalt = new FormData();
   inhalt.append("datei", datei);
-  const antwort = await fetch(`/api/threads/${threadId}/documents`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${TOKEN}`,
-      "X-Agora-Token": TOKEN,
-      "X-Agora-Sprache": SPRACHE,
-    },
-    body: inhalt,
-  });
-  const text = await antwort.text();
-  const daten = text ? JSON.parse(text) : null;
-  if (!antwort.ok) throw new Error(daten?.detail || `HTTP ${antwort.status}`);
-  return daten;
+  return api(`/api/threads/${threadId}/documents`, { method: "POST", body: inhalt });
 }
 
 const escapeHtml = (value) =>
@@ -732,7 +721,16 @@ function renderThread(thread, posts) {
     .map(
       (agent) => `<span class="teilnehmer" data-agent="${agent.id}">
         <button type="button" class="wer" title="${t("thread.werTitel")}">${escapeHtml(agent.name)}</button>
-        <span class="muted">(${escapeHtml(agent.model)})</span>
+        <span class="muted">(${escapeHtml(agent.model)})</span>${
+          // Nur DASS jemand eigenes Material hat - nie welches. Sonst wirkt
+          // sein Widerspruch grundlos und die Diskussion ist von aussen
+          // nicht zu verstehen.
+          agent.wissen_dateien
+            ? `<span class="aktenvermerk" title="${t("wissen.vermerkTitel", {
+                anzahl: agent.wissen_dateien,
+              })}">&#128206;</span>`
+            : ""
+        }
         <button type="button" class="raus" title="${t("thread.rausTitel")}">&times;</button></span>`,
     )
     .join(" ");
@@ -1388,6 +1386,16 @@ async function loadAgents() {
       card.appendChild(wechsel);
     }
 
+    if (eigener) {
+      const akte = document.createElement("button");
+      akte.textContent = agent.wissen_dateien
+        ? t("wissen.knopfMit", { anzahl: agent.wissen_dateien })
+        : t("wissen.knopf");
+      akte.title = t("wissen.knopfTitel");
+      akte.addEventListener("click", () => handaktePflegen(agent));
+      card.appendChild(akte);
+    }
+
     if (agent.owner_id === ME.id) {
       const remove = document.createElement("button");
       remove.className = "danger";
@@ -1402,6 +1410,101 @@ async function loadAgents() {
   }
 }
 
+
+/** Unterlagen pflegen, die nur dieser eine Agent kennt.
+ *
+ * Der Umfang steht bewusst gross dabei: das Material liegt in JEDEM Aufruf
+ * dieses Agenten, genau wie seine Persona. Wer das nicht sieht, legt ein
+ * halbes Buch hinein und wundert sich ueber die Rechnung.
+ */
+async function handaktePflegen(agent) {
+  const feld = document.createElement("dialog");
+  feld.className = "card";
+
+  const titel = document.createElement("h3");
+  titel.textContent = t("wissen.titel", { name: agent.name });
+  const hinweis = document.createElement("p");
+  hinweis.className = "muted";
+  hinweis.textContent = t("wissen.hinweis");
+
+  const liste = document.createElement("ul");
+  liste.className = "mitgliederliste";
+  const umfang = document.createElement("p");
+  umfang.className = "muted";
+
+  const datei = document.createElement("input");
+  datei.type = "file";
+  const fehler = document.createElement("p");
+  fehler.className = "error";
+  const zu = document.createElement("button");
+  zu.textContent = t("allgemein.schliessen");
+
+  const unten = document.createElement("div");
+  unten.className = "row";
+  unten.append(zu);
+  feld.append(titel, hinweis, liste, umfang, datei, fehler, unten);
+  document.body.appendChild(feld);
+  feld.showModal();
+
+  const zeichnen = async () => {
+    fehler.textContent = "";
+    let akte = [];
+    try {
+      akte = await api(`/api/agents/${agent.id}/wissen`);
+    } catch (error) {
+      fehler.textContent = error.message;
+      return;
+    }
+    liste.innerHTML = "";
+    for (const stueck of akte) {
+      const zeile = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = `${stueck.name} (${stueck.zeichen} ${t("wissen.zeichen")})`;
+      const weg = document.createElement("button");
+      weg.className = "link";
+      weg.textContent = t("wissen.entfernen");
+      weg.addEventListener("click", async () => {
+        try {
+          await api(`/api/agents/${agent.id}/wissen/${stueck.id}`, { method: "DELETE" });
+          await zeichnen();
+          await loadAgents();
+        } catch (error) {
+          fehler.textContent = error.message;
+        }
+      });
+      zeile.append(name, weg);
+      liste.appendChild(zeile);
+    }
+    const summe = akte.reduce((n, x) => n + x.zeichen, 0);
+    umfang.textContent = akte.length
+      ? t("wissen.umfang", { zeichen: summe, token: Math.round(summe / 3.5) })
+      : t("wissen.leer");
+  };
+
+  datei.addEventListener("change", async () => {
+    if (!datei.files.length) return;
+    fehler.textContent = "";
+    const daten = new FormData();
+    daten.append("datei", datei.files[0]);
+    try {
+      // Kein Content-Type setzen: den Trenner der FormData baut der Browser.
+      await api(`/api/agents/${agent.id}/wissen`, { method: "POST", body: daten });
+      datei.value = "";
+      await zeichnen();
+      await loadAgents();
+    } catch (error) {
+      fehler.textContent = error.message;
+      datei.value = "";
+    }
+  });
+
+  zu.addEventListener("click", () => {
+    feld.close();
+    feld.remove();
+  });
+
+  await zeichnen();
+}
 
 // Modell-Liste zum gewaehlten Endpunkt. Bewusst auf Knopfdruck und nicht
 // automatisch: der Aufruf geht nach draussen und kostet Zeit, und wer den

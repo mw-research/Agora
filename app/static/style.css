@@ -452,3 +452,13 @@ dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin: 1rem
   padding: .3rem 0;
   border-bottom: 1px solid var(--line);
 }
+
+/* Der Aktenvermerk am Teilnehmer: nur ein Zeichen dafuer, DASS jemand
+   eigenes Material mitbringt. Was darin steht, sieht ausser dem Besitzer
+   niemand - aber ohne diesen Hinweis wirkt sein Widerspruch grundlos. */
+.aktenvermerk {
+  margin-left: .2rem;
+  font-size: .8rem;
+  cursor: help;
+  opacity: .8;
+}

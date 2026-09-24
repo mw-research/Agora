@@ -24,7 +24,17 @@ from . import llm, pruefarten, tresor, werkzeuge
 from .config import get_settings
 from .db import SessionLocal
 from .events import bus
-from .models import Agent, Participant, Post, Thread, User, as_utc, to_utc_iso, utcnow
+from .models import (
+    Agent,
+    Participant,
+    Post,
+    Thread,
+    User,
+    Wissen,
+    as_utc,
+    to_utc_iso,
+    utcnow,
+)
 
 log = logging.getLogger(__name__)
 
@@ -246,7 +256,8 @@ async def run_turn(
         return
 
     posts = await recent_posts(session, thread_id, settings.max_context_posts)
-    messages = _build_messages(thread, participants, speaker, posts)
+    akte = await _handakte(session, speaker)
+    messages = _build_messages(thread, participants, speaker, posts, akte)
 
     post = Post(
         thread_id=thread.id,
@@ -570,11 +581,60 @@ def _round_robin(thread: Thread, participants: list[Agent]) -> Agent:
     return participants[0]
 
 
+async def _handakte(session: AsyncSession, agent: Agent) -> list[tuple[str, str]]:
+    """Die Unterlagen, die nur dieser Agent kennt."""
+    zeilen = (
+        await session.execute(
+            select(Wissen.name, Wissen.text)
+            .where(Wissen.agent_id == agent.id)
+            .order_by(Wissen.created_at)
+        )
+    ).all()
+    return [(name, text) for name, text in zeilen if text.strip()]
+
+
 # ---------------------------------------------------------------------------
 # Prompt-Aufbau
 # ---------------------------------------------------------------------------
+def _aktenblock(akte: list[tuple[str, str]] | None) -> str:
+    """Die eigenen Unterlagen als Teil des Systemprompts.
+
+    Der wichtigste Teil ist nicht das Material, sondern der Satz davor: die
+    anderen kennen es NICHT. Ohne ihn schreibt der Agent "wie wir alle dem
+    beiliegenden Papier entnehmen" - und die Diskussion kippt, weil sich
+    alle auf etwas beziehen sollen, das nur einer hat.
+
+    Der zweite wichtige Satz betrifft das Zitieren: der Agent soll den Inhalt
+    wiedergeben, statt auf "mein Dokument" zu verweisen. Ein Verweis auf
+    etwas Unsichtbares ist fuer alle anderen wertlos - erst der wiedergegebene
+    Inhalt macht aus dem Wissensvorsprung ein Argument.
+    """
+    if not akte:
+        return ""
+    teile = [
+        "--- Deine eigenen Unterlagen ---\n"
+        "Diese Unterlagen liegen NUR dir vor. Die anderen Teilnehmer kennen "
+        "sie nicht und koennen sie nicht einsehen.\n"
+        "- Setze sie nicht als bekannt voraus und verweise nicht auf 'das "
+        "Dokument' oder 'meine Unterlagen'.\n"
+        "- Willst du daraus argumentieren, gib den Inhalt wieder: Zahl, Satz "
+        "oder Stelle, um die es geht. Erst dann koennen die anderen darauf "
+        "eingehen.\n"
+        "- Wenn sie deinem Material widersprechen, halte dagegen, statt "
+        "einzulenken - dafuer hast du es.\n"
+    ]
+    for name, text in akte:
+        teile.append(f"\n[{name}]\n{text.strip()}\n")
+    teile.append("--- Ende deiner Unterlagen ---\n\n")
+    return "".join(teile)
+
+
 def _build_messages(
-    thread: Thread, participants: list[Agent], speaker: Agent, posts: list[Post]
+    thread: Thread,
+    participants: list[Agent],
+    speaker: Agent,
+    posts: list[Post],
+    akte: list[tuple[str, str]] | None = None,
 ) -> list[dict]:
     others = ", ".join(a.name for a in participants if a.id != speaker.id) or "niemand"
     # Liegt Material vor, aendert das den Auftrag: dann ist zu pruefen, nicht
@@ -582,7 +642,8 @@ def _build_messages(
     hat_dokument = any(p.author_type == "document" and p.content for p in posts)
     system = (
         f"{speaker.persona}\n\n"
-        "--- Forum-Kontext ---\n"
+        + _aktenblock(akte)
+        + "--- Forum-Kontext ---\n"
         f"Du bist '{speaker.name}' in einer schriftlichen Fachdiskussion.\n"
         f"Weitere Teilnehmer: {others}. Menschen koennen jederzeit mitschreiben; "
         "ihre Beitraege sind mit (Mensch) markiert und haben Vorrang.\n"
