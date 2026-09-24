@@ -93,8 +93,31 @@ def _add_missing_columns(connection) -> None:
             connection.execute(text(sql))
 
 
+# Irgendeine feste Zahl - sie muss nur in allen Pods dieselbe sein.
+_SCHEMA_SPERRE = 8_151_962_030_411
+
+
 async def init_db() -> None:
+    """Schema anlegen und fehlende Spalten nachziehen.
+
+    Die Sperre ist der Punkt. Web und Worker sind zwei Deployments, und ein
+    Rollout startet sie praktisch gleichzeitig - beide laufen dann hier
+    hinein. Ohne Sperre schaut jeder nach, welche Spalte fehlt, beide
+    beschliessen dasselbe, und der Zweite laeuft in "column already exists".
+    Das wirft ihn aus dem Start, er landet in CrashLoopBackOff und faengt
+    sich erst beim naechsten Versuch.
+
+    pg_advisory_xact_lock haelt bis zum Ende dieser Transaktion. Der Zweite
+    wartet, bekommt die Sperre danach und findet alles schon vor - er
+    inspiziert also erst, wenn der Erste fertig ist.
+
+    SQLite braucht das nicht: dort laeuft nur ein Prozess auf der Datei, und
+    die Datei selbst wird beim Schreiben ohnehin gesperrt.
+    """
     async with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            await conn.execute(text("SELECT pg_advisory_xact_lock(:n)"),
+                               {"n": _SCHEMA_SPERRE})
         await conn.run_sync(Base.metadata.create_all)
         await conn.run_sync(_add_missing_columns)
 
