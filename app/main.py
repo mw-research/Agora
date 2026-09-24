@@ -24,7 +24,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import (
@@ -50,6 +50,7 @@ from .models import (
     Credential,
     Forum,
     Gelesen,
+    Mitglied,
     Participant,
     Post,
     Thread,
@@ -64,7 +65,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.30.0"
+APP_VERSION = "0.31.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -460,6 +461,26 @@ async def list_users(
     return (await session.execute(select(User).order_by(User.name))).scalars().all()
 
 
+@app.get("/api/personen", response_model=list[schemas.MitgliedOut])
+async def list_personen(
+    _: User = Depends(current_user), session: AsyncSession = Depends(get_session)
+):
+    """Nur Kennung und Name - fuer die Einladung in ein geschlossenes Forum.
+
+    /api/users bleibt Admins vorbehalten, weil dort der Zustand der Konten
+    haengt: Rechte, PIN gesetzt, freigeschaltet bis wann. Hier steht nichts
+    davon. Ohne diese Liste koennte niemand ausser einem Admin jemanden in
+    seinen eigenen Raum holen - und ein Admin auch nicht, denn er sieht den
+    Raum ja gerade nicht. Der Raum bliebe fuer immer einsam.
+
+    Namen sind im Forum ohnehin kein Geheimnis: sie stehen an jedem Beitrag.
+    """
+    zeilen = (
+        await session.execute(select(User.id, User.name).order_by(User.name))
+    ).all()
+    return [schemas.MitgliedOut(user_id=i, name=n) for i, n in zeilen]
+
+
 @app.post("/api/users", response_model=schemas.UserCreated, status_code=201)
 async def create_user(
     payload: schemas.UserCreate,
@@ -574,14 +595,68 @@ async def delete_user(
             "Admin-Konto hast.",
         )
 
-    # Themen uebergeben, statt sie mitzureissen.
+    # Themen uebergeben, statt sie mitzureissen - aber NICHT die aus
+    # geschlossenen Foren. Sonst waere das Loeschen einer Person der Weg,
+    # als Admin an einen privaten Raum zu kommen: erst den Besitzer
+    # entfernen, dann seine Themen erben. Ein geschlossener Raum bleibt
+    # deshalb bei denen, die ohnehin darin sind; ist niemand mehr uebrig,
+    # geht er ganz.
+    geschlossen_mit = {
+        f_id
+        for f_id, in (
+            await session.execute(
+                select(Forum.id).where(Forum.sichtbar == "geschlossen")
+            )
+        ).all()
+    }
+    # Auch was unter einem geschlossenen Forum haengt, ist geschlossen.
+    for oben in list(geschlossen_mit):
+        geschlossen_mit.update(await _forum_mit_unterforen(session, oben))
+
     uebergeben = (
         await session.execute(
             update(Thread)
-            .where(Thread.creator_id == person.id)
+            .where(
+                Thread.creator_id == person.id,
+                Thread.forum_id.is_(None) | Thread.forum_id.not_in(geschlossen_mit or [""]),
+            )
             .values(creator_id=admin.id)
         )
     ).rowcount
+
+    # Geschlossene Raeume, in denen die Person war: an ein anderes Mitglied
+    # oder weg.
+    raeume = (
+        await session.execute(
+            select(Mitglied.forum_id).where(Mitglied.user_id == person.id)
+        )
+    ).scalars().all()
+    verwaist = 0
+    for raum in raeume:
+        erbe = (
+            await session.execute(
+                select(Mitglied.user_id)
+                .where(Mitglied.forum_id == raum, Mitglied.user_id != person.id)
+                .order_by(Mitglied.created_at)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        aeste = await _forum_mit_unterforen(session, raum)
+        if erbe is None:
+            # Niemand mehr drin. Ein Forum, das keiner mehr oeffnen kann,
+            # ist keine Sicherung, sondern unerreichbarer Ballast - und der
+            # Admin soll es gerade nicht aufmachen duerfen. Also weg.
+            await session.execute(delete(Thread).where(Thread.forum_id.in_(aeste)))
+            forum = await session.get(Forum, raum)
+            if forum is not None:
+                await session.delete(forum)
+            verwaist += 1
+        else:
+            await session.execute(
+                update(Thread)
+                .where(Thread.creator_id == person.id, Thread.forum_id.in_(aeste))
+                .values(creator_id=erbe)
+            )
 
     agenten = (
         await session.execute(select(Agent).where(Agent.owner_id == person.id))
@@ -594,14 +669,16 @@ async def delete_user(
     await session.commit()
 
     log.warning(
-        "Admin %s hat %s geloescht (%d Themen uebernommen, %d Agenten, %d Zugaenge)",
-        admin.name, person.name, uebergeben, len(agenten), len(zugaenge),
+        "Admin %s hat %s geloescht (%d Themen uebernommen, %d Agenten, "
+        "%d Zugaenge, %d verwaiste geschlossene Foren entfernt)",
+        admin.name, person.name, uebergeben, len(agenten), len(zugaenge), verwaist,
     )
     return {
         "geloescht": person.name,
         "themen_uebernommen": uebergeben,
         "agenten_entfernt": len(agenten),
         "zugaenge_entfernt": len(zugaenge),
+        "raeume_entfernt": verwaist,
     }
 
 
@@ -1075,6 +1152,76 @@ async def delete_agent(
 # ---------------------------------------------------------------------------
 # Foren
 # ---------------------------------------------------------------------------
+async def sichtbare_foren(session: AsyncSession, user: User) -> set[str]:
+    """Welche Foren diese Person sehen darf.
+
+    Die Regel in einem Satz: ein Forum ist sichtbar, wenn auf dem Weg zur
+    Wurzel kein geschlossenes Forum liegt, in dem die Person nicht Mitglied
+    ist.
+
+    Die Vererbung nach unten ist der Punkt. Ohne sie waere jedes Unterforum
+    eines geschlossenen Forums ein Loch in der Wand - man legt einfach eins
+    darunter an und der Inhalt ist wieder offen.
+
+    Admins bekommen hier bewusst KEINE Ausnahme. Ein geschlossenes Forum ist
+    sonst nur ein Forum, das ausser sechs Leuten niemand sieht. Loeschen
+    duerfen sie es trotzdem, ohne hineinzusehen - siehe delete_forum.
+    """
+    foren = (
+        await session.execute(select(Forum.id, Forum.parent_id, Forum.sichtbar))
+    ).all()
+    if not foren:
+        return set()
+
+    meine = set(
+        (
+            await session.execute(
+                select(Mitglied.forum_id).where(Mitglied.user_id == user.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    zustand = {f_id: (eltern, art) for f_id, eltern, art in foren}
+    erlaubt: dict[str, bool] = {}
+
+    def darf(forum_id: str, gesehen: set[str]) -> bool:
+        if forum_id in erlaubt:
+            return erlaubt[forum_id]
+        # Ringe kann die API nicht erzeugen, ein eingespieltes Abbild schon.
+        # Im Zweifel zu: lieber etwas nicht zeigen als etwas zu viel.
+        if forum_id in gesehen:
+            return False
+        eltern, art = zustand[forum_id]
+        antwort = not (art == "geschlossen" and forum_id not in meine)
+        if antwort and eltern and eltern in zustand:
+            antwort = darf(eltern, gesehen | {forum_id})
+        erlaubt[forum_id] = antwort
+        return antwort
+
+    return {f_id for f_id, _, _ in foren if darf(f_id, set())}
+
+
+async def darf_thema_sehen(session: AsyncSession, user: User, thread: Thread) -> bool:
+    """Ein Thema folgt seinem Forum. Ohne Forum ist es fuer alle da."""
+    if thread.forum_id is None:
+        return True
+    return thread.forum_id in await sichtbare_foren(session, user)
+
+
+async def thema_oder_403(session: AsyncSession, user: User, thread_id: str) -> Thread:
+    """Das Thema holen - oder abweisen, als gaebe es es nicht.
+
+    Bewusst 404 und nicht 403: ein 403 verriete, dass es das Thema gibt.
+    Bei einem geschlossenen Forum ist schon die Existenz eine Auskunft.
+    """
+    thread = await session.get(Thread, thread_id)
+    if thread is None or not await darf_thema_sehen(session, user, thread):
+        raise HTTPException(404, "Thread nicht gefunden")
+    return thread
+
+
 async def _waere_zyklus(session: AsyncSession, forum_id: str, eltern_id: str | None) -> bool:
     """Darf forum_id unter eltern_id haengen?
 
@@ -1110,13 +1257,15 @@ async def _forum_mit_unterforen(session: AsyncSession, forum_id: str) -> list[st
 
 @app.get("/api/forums", response_model=list[schemas.ForumOut])
 async def list_forums(
-    _: User = Depends(current_user), session: AsyncSession = Depends(get_session)
+    user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
 ):
-    return (
+    erlaubt = await sichtbare_foren(session, user)
+    alle = (
         (await session.execute(select(Forum).order_by(Forum.position, Forum.name)))
         .scalars()
         .all()
     )
+    return [f for f in alle if f.id in erlaubt]
 
 
 @app.post("/api/forums", response_model=schemas.ForumOut, status_code=201)
@@ -1125,10 +1274,17 @@ async def create_forum(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    if payload.parent_id and await session.get(Forum, payload.parent_id) is None:
+    if payload.parent_id and payload.parent_id not in await sichtbare_foren(session, user):
         raise HTTPException(400, "Uebergeordnetes Forum gibt es nicht")
+    if payload.sichtbar not in ("offen", "geschlossen"):
+        raise HTTPException(400, "Sichtbarkeit ist entweder offen oder geschlossen")
     forum = Forum(creator_id=user.id, **payload.model_dump())
     session.add(forum)
+    await session.flush()
+    if forum.sichtbar == "geschlossen":
+        # Wer es anlegt, ist drin - sonst waere es im selben Atemzug fuer
+        # niemanden mehr zu oeffnen.
+        session.add(Mitglied(forum_id=forum.id, user_id=user.id))
     await session.commit()
     await session.refresh(forum)
     return forum
@@ -1138,25 +1294,123 @@ async def create_forum(
 async def update_forum(
     forum_id: str,
     payload: schemas.ForumUpdate,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    erlaubt = await sichtbare_foren(session, user)
     forum = await session.get(Forum, forum_id)
-    if forum is None:
+    if forum is None or forum_id not in erlaubt:
         raise HTTPException(404, "Nicht gefunden")
     werte = payload.model_dump(exclude_unset=True)
+    if "sichtbar" in werte:
+        if werte["sichtbar"] not in ("offen", "geschlossen"):
+            raise HTTPException(400, "Sichtbarkeit ist entweder offen oder geschlossen")
+        if forum.creator_id != user.id and not user.is_admin:
+            raise HTTPException(403, "Nur der Ersteller aendert die Sichtbarkeit")
     if "parent_id" in werte:
         if werte["parent_id"] == forum_id:
             raise HTTPException(400, "Ein Forum kann nicht sich selbst enthalten")
-        if werte["parent_id"] and await session.get(Forum, werte["parent_id"]) is None:
+        if werte["parent_id"] and werte["parent_id"] not in erlaubt:
             raise HTTPException(400, "Uebergeordnetes Forum gibt es nicht")
         if await _waere_zyklus(session, forum_id, werte["parent_id"]):
             raise HTTPException(400, "Das waere ein Ring: Ziel liegt unterhalb dieses Forums")
     for schluessel, wert in werte.items():
         setattr(forum, schluessel, wert)
+    if forum.sichtbar == "geschlossen":
+        vorhanden = await session.get(
+            Mitglied, {"forum_id": forum.id, "user_id": user.id}
+        )
+        if vorhanden is None:
+            session.add(Mitglied(forum_id=forum.id, user_id=user.id))
     await session.commit()
     await session.refresh(forum)
     return forum
+
+
+@app.get("/api/forums/{forum_id}/mitglieder", response_model=list[schemas.MitgliedOut])
+async def list_mitglieder(
+    forum_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Wer in diesem Raum ist. Sehen darf das nur, wer selbst darin ist."""
+    if forum_id not in await sichtbare_foren(session, user):
+        raise HTTPException(404, "Nicht gefunden")
+    zeilen = (
+        await session.execute(
+            select(Mitglied.user_id, User.name)
+            .join(User, User.id == Mitglied.user_id)
+            .where(Mitglied.forum_id == forum_id)
+            .order_by(User.name)
+        )
+    ).all()
+    return [schemas.MitgliedOut(user_id=u, name=n) for u, n in zeilen]
+
+
+@app.post("/api/forums/{forum_id}/mitglieder", status_code=201)
+async def mitglied_aufnehmen(
+    forum_id: str,
+    payload: schemas.MitgliedIn,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Jemanden hereinholen.
+
+    Wer drin ist, darf hereinholen - nicht nur der Ersteller. Ein Raum, in
+    dem nur eine Person Leute aufnehmen kann, steht still, sobald sie weg
+    ist, und das Loeschen der Person wuerde ihn mitnehmen.
+    """
+    forum = await session.get(Forum, forum_id)
+    if forum is None or forum_id not in await sichtbare_foren(session, user):
+        raise HTTPException(404, "Nicht gefunden")
+    if forum.sichtbar != "geschlossen":
+        raise HTTPException(400, "Ein offenes Forum hat keine Mitgliederliste.")
+    if await session.get(User, payload.user_id) is None:
+        raise HTTPException(404, "Person nicht gefunden")
+    vorhanden = await session.get(
+        Mitglied, {"forum_id": forum_id, "user_id": payload.user_id}
+    )
+    if vorhanden is None:
+        session.add(Mitglied(forum_id=forum_id, user_id=payload.user_id))
+        await session.commit()
+    return {"aufgenommen": payload.user_id}
+
+
+@app.delete("/api/forums/{forum_id}/mitglieder/{user_id}", status_code=204)
+async def mitglied_entfernen(
+    forum_id: str,
+    user_id: str,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Jemanden hinauswerfen - oder selbst gehen.
+
+    Die letzte Person kann nicht gehen: ein geschlossenes Forum ohne
+    Mitglieder koennte niemand mehr oeffnen, auch kein Admin. Es waere da
+    und unerreichbar. Wer wirklich weg will, loescht es.
+    """
+    forum = await session.get(Forum, forum_id)
+    if forum is None or forum_id not in await sichtbare_foren(session, user):
+        raise HTTPException(404, "Nicht gefunden")
+    stand = await session.get(Mitglied, {"forum_id": forum_id, "user_id": user_id})
+    if stand is None:
+        raise HTTPException(404, "Gehoert nicht dazu")
+    uebrig = (
+        await session.execute(
+            select(func.count())
+            .select_from(Mitglied)
+            .where(Mitglied.forum_id == forum_id, Mitglied.user_id != user_id)
+        )
+    ).scalar_one()
+    if uebrig == 0:
+        raise HTTPException(
+            400,
+            "Das waere das letzte Mitglied - danach kaeme niemand mehr hinein. "
+            "Hol erst jemanden dazu oder loesche das Forum.",
+        )
+    await session.delete(stand)
+    await session.commit()
+    return Response(status_code=204)
 
 
 @app.delete("/api/forums/{forum_id}", status_code=204)
@@ -1168,8 +1422,28 @@ async def delete_forum(
     forum = await session.get(Forum, forum_id)
     if forum is None:
         raise HTTPException(404, "Nicht gefunden")
-    if forum.creator_id != user.id and not user.is_admin:
+
+    sichtbar = forum_id in await sichtbare_foren(session, user)
+    if not sichtbar and not user.is_admin:
+        raise HTTPException(404, "Nicht gefunden")
+    if sichtbar and forum.creator_id != user.id and not user.is_admin:
         raise HTTPException(403, "Nur der Ersteller oder ein Admin darf loeschen")
+
+    if not sichtbar:
+        # Loeschen duerfen, ohne lesen zu duerfen. Ein Admin kann einen
+        # geschlossenen Raum nicht leerraeumen, weil er nicht hineinsieht -
+        # also faellt hier die Auflage weg, dass er leer sein muss. Was
+        # darin liegt, geht mit; ON DELETE CASCADE traegt Unterforen,
+        # Mitglieder und ueber threads.forum_id die Themen.
+        log.warning(
+            "Admin %s loescht das geschlossene Forum %s ungesehen samt Inhalt",
+            user.name, forum_id,
+        )
+        aeste = await _forum_mit_unterforen(session, forum_id)
+        await session.execute(delete(Thread).where(Thread.forum_id.in_(aeste)))
+        await session.delete(forum)
+        await session.commit()
+        return Response(status_code=204)
 
     kinder = (
         await session.execute(select(Forum.id).where(Forum.parent_id == forum_id).limit(1))
@@ -1191,9 +1465,10 @@ async def delete_forum(
 @app.get("/api/threads", response_model=list[schemas.ThreadOut])
 async def list_threads(
     forum_id: str | None = None,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    erlaubt = await sichtbare_foren(session, user)
     stmt = select(Thread).order_by(Thread.updated_at.desc())
     if forum_id == "-":
         # Themen ohne Einordnung
@@ -1201,7 +1476,13 @@ async def list_threads(
     elif forum_id:
         # Ein Oberforum zeigt auch, was in seinen Unterforen liegt - sonst
         # waere es eine leere Huelle, obwohl darunter diskutiert wird.
-        stmt = stmt.where(Thread.forum_id.in_(await _forum_mit_unterforen(session, forum_id)))
+        aeste = await _forum_mit_unterforen(session, forum_id)
+        stmt = stmt.where(Thread.forum_id.in_([f for f in aeste if f in erlaubt]))
+    else:
+        # Ohne Filter: alles Offene plus die Themen ohne Forum.
+        stmt = stmt.where(
+            Thread.forum_id.is_(None) | Thread.forum_id.in_(erlaubt or [""])
+        )
     return (await session.execute(stmt)).scalars().all()
 
 
@@ -1213,6 +1494,11 @@ async def create_thread(
 ):
     if payload.mode not in ("selector", "roundrobin"):
         raise HTTPException(400, "mode muss 'selector' oder 'roundrobin' sein")
+
+    # In ein Forum, das man nicht sieht, legt man auch nichts hinein.
+    if payload.forum_id is not None:
+        if payload.forum_id not in await sichtbare_foren(session, user):
+            raise HTTPException(400, "Forum gibt es nicht")
 
     agents: list[Agent] = []
     for agent_id in dict.fromkeys(payload.agent_ids):
@@ -1283,12 +1569,10 @@ async def create_thread(
 @app.get("/api/threads/{thread_id}", response_model=schemas.ThreadDetail)
 async def get_thread(
     thread_id: str,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
     participants = await orchestrator.list_participants(session, thread_id)
     return schemas.ThreadDetail(
         **schemas.ThreadOut.model_validate(thread).model_dump(),
@@ -1299,9 +1583,10 @@ async def get_thread(
 @app.get("/api/threads/{thread_id}/posts", response_model=list[schemas.PostOut])
 async def list_posts(
     thread_id: str,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    await thema_oder_403(session, user, thread_id)
     return (
         (
             await session.execute(
@@ -1329,15 +1614,16 @@ async def verschiebe_thread(
     weder Umleitung noch alte URL, anders als in einem Forum, das seine
     Adressen aus dem Forumsnamen baut.
     """
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
     if thread.creator_id != user.id and not user.is_admin:
         raise HTTPException(403, "Nur wer das Thema eroeffnet hat, darf es verschieben.")
 
     werte = payload.model_dump(exclude_unset=True)
     if "forum_id" in werte and werte["forum_id"] is not None:
-        if await session.get(Forum, werte["forum_id"]) is None:
+        # In ein Forum, das man nicht sieht, schiebt man auch nichts hinein -
+        # sonst waere das Verschieben ein Weg, Inhalt aus der Sicht anderer
+        # verschwinden zu lassen oder in einen fremden Raum zu legen.
+        if werte["forum_id"] not in await sichtbare_foren(session, user):
             raise HTTPException(400, "Forum gibt es nicht")
     for schluessel, wert in werte.items():
         setattr(thread, schluessel, wert)
@@ -1363,8 +1649,7 @@ async def thema_gelesen(
     neuen Beitrag, den sie tatsaechlich anzeigt. Fehlschlaege sind egal - im
     schlimmsten Fall leuchtet ein Punkt einmal zu lang.
     """
-    if await session.get(Thread, thread_id) is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    await thema_oder_403(session, user, thread_id)
     stand = await session.get(Gelesen, {"user_id": user.id, "thread_id": thread_id})
     if stand is None:
         session.add(Gelesen(user_id=user.id, thread_id=thread_id, gelesen_bis=utcnow()))
@@ -1389,6 +1674,9 @@ async def ungelesen(
     Der Punkt wandert bis zur Wurzel hinauf, sonst bliebe er an einem
     zugeklappten Ast unsichtbar.
     """
+    # Auch hier die Sichtbarkeit: der Punkt verraet zwar keinen Inhalt, aber
+    # die Existenz und die Regsamkeit eines geschlossenen Forums.
+    erlaubt = await sichtbare_foren(session, user)
     letzter = (
         select(Post.thread_id, func.max(Post.created_at).label("zuletzt"))
         .where(Post.user_id.is_distinct_from(user.id))
@@ -1403,6 +1691,7 @@ async def ungelesen(
                 Gelesen,
                 (Gelesen.thread_id == Thread.id) & (Gelesen.user_id == user.id),
             )
+            .where(Thread.forum_id.is_(None) | Thread.forum_id.in_(erlaubt or [""]))
         )
     ).all()
 
@@ -1447,9 +1736,7 @@ async def create_post(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
 
     post = await orchestrator.add_post(
         session,
@@ -1495,9 +1782,7 @@ async def add_participant(
     fehlt. Der Neue erfaehrt aus dem Verlauf, worum es geht, und muss der
     Einigung am Ende ebenfalls zustimmen.
     """
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
 
     agent = await session.get(Agent, payload.agent_id)
     if agent is None:
@@ -1559,9 +1844,7 @@ async def remove_participant(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
 
     bisher = await orchestrator.list_participants(session, thread_id)
     if len(bisher) <= 1:
@@ -1610,9 +1893,7 @@ async def add_document(
     nicht - der Worker laeuft in einem anderen Prozess und sieht nur, was im
     Verlauf steht.
     """
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Thread nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
 
     rohdaten = await datei.read()
     name = (datei.filename or "dokument").strip()
@@ -1760,6 +2041,8 @@ async def translate_post(
     post = await session.get(Post, post_id)
     if post is None:
         raise HTTPException(404, "Beitrag nicht gefunden")
+    # Uebersetzen heisst lesen - also dieselbe Huerde wie beim Thema.
+    await thema_oder_403(session, user, post.thread_id)
     if post.author_type == "tool":
         raise HTTPException(400, "Rechenergebnisse werden nicht uebersetzt.")
     if not (post.content or "").strip():
@@ -1824,9 +2107,7 @@ async def control_thread(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
 
     action = payload.action
     if action == "pause":
@@ -1879,9 +2160,7 @@ async def delete_thread(
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(Thread, thread_id)
-    if thread is None:
-        raise HTTPException(404, "Nicht gefunden")
+    thread = await thema_oder_403(session, user, thread_id)
     if thread.creator_id != user.id and not user.is_admin:
         raise HTTPException(403, "Nur der Ersteller oder ein Admin darf loeschen")
     await session.delete(thread)
@@ -1947,8 +2226,8 @@ async def stream_thread(
         user = await user_by_token(session, token or agora_token)
         if user is None:
             raise HTTPException(401, "Unbekanntes Token")
-        if await session.get(Thread, thread_id) is None:
-            raise HTTPException(404, "Thread nicht gefunden")
+        # Ohne diese Zeile waere der Raum zu und der Livestream daraus offen.
+        await thema_oder_403(session, user, thread_id)
 
     return _ereignisstrom(request, lambda e: e.get("thread_id") == thread_id)
 
@@ -1970,10 +2249,30 @@ async def stream_uebersicht(
     schicken waere Verschwendung.
     """
     async with SessionLocal() as session:
-        if await user_by_token(session, token or agora_token) is None:
+        user = await user_by_token(session, token or agora_token)
+        if user is None:
             raise HTTPException(401, "Unbekanntes Token")
+        # Welche Themen diese Person sehen darf, steht beim Verbinden fest.
+        # Ein Thema, das waehrenddessen in ein geschlossenes Forum wandert,
+        # faellt erst beim naechsten Verbinden heraus - es traegt ohnehin nur
+        # Titel und Zustand, keinen Inhalt.
+        erlaubt = await sichtbare_foren(session, user)
+        meine = set(
+            (
+                await session.execute(
+                    select(Thread.id).where(
+                        Thread.forum_id.is_(None) | Thread.forum_id.in_(erlaubt or [""])
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
-    return _ereignisstrom(request, nur_themenstand)
+    def sichtbarer_stand(ereignis: dict) -> bool:
+        return nur_themenstand(ereignis) and ereignis.get("thread_id") in meine
+
+    return _ereignisstrom(request, sichtbarer_stand)
 
 
 @app.get("/healthz")

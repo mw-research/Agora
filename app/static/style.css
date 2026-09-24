@@ -430,3 +430,25 @@ dialog::backdrop { background: rgba(0, 0, 0, .55); }
   color: var(--ok);
 }
 dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin: 1rem 0 0; padding: 0; }
+
+/* --- Geschlossene Foren ---
+   Das Schloss steht vor dem Namen, nicht dahinter: so sieht man beim
+   Ueberfliegen der Leiste sofort, welche Aeste privat sind. */
+.forum-tree li.geschlossen::before {
+  content: "\1F512";
+  font-size: .72rem;
+  opacity: .75;
+  flex: none;
+}
+.forum-tree li:hover .mitglieder { visibility: visible; }
+.forum-tree .mitglieder:hover { color: var(--accent); }
+
+.mitgliederliste { list-style: none; margin: .4rem 0; padding: 0; }
+.mitgliederliste li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6rem;
+  padding: .3rem 0;
+  border-bottom: 1px solid var(--line);
+}

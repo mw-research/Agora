@@ -186,7 +186,36 @@ class Forum(Base):
         ForeignKey("forums.id", ondelete="CASCADE"), nullable=True, index=True
     )
     position: Mapped[int] = mapped_column(Integer, default=0)
+
+    # offen = jeder Angemeldete sieht es; geschlossen = nur die Mitglieder.
+    # Die Sichtbarkeit vererbt sich nach unten: wer ein geschlossenes Forum
+    # nicht sehen darf, sieht auch nichts darunter - sonst waere jedes
+    # Unterforum ein Loch in der Wand.
+    sichtbar: Mapped[str] = mapped_column(
+        String(12), default="offen", server_default="offen"
+    )
+
     creator_id: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Mitglied(Base):
+    """Wer ein geschlossenes Forum sehen darf.
+
+    Fuer offene Foren steht hier nichts - die sieht ohnehin jeder. Ein
+    geschlossenes Forum ohne Mitglieder ist niemandem mehr zugaenglich;
+    deshalb raeumt das Loeschen einer Person solche Foren mit ab, statt
+    unerreichbare Daten stehen zu lassen.
+    """
+
+    __tablename__ = "mitglieder"
+
+    forum_id: Mapped[str] = mapped_column(
+        ForeignKey("forums.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

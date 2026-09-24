@@ -417,6 +417,24 @@ function zeichneForumBaum() {
       zeichneForumBaum();
       await loadThreads();
     });
+    if (forum && forum.sichtbar === "geschlossen") {
+      // Wer das sieht, ist ohnehin drin - das Schloss sagt nur, dass es
+      // nicht alle sehen.
+      li.classList.add("geschlossen");
+      li.title = t("forum.geschlossenTitel");
+
+      const leute = document.createElement("button");
+      leute.className = "weg mitglieder";
+      leute.type = "button";
+      leute.textContent = "\u{1F465}";
+      leute.title = t("forum.mitgliederTitel");
+      leute.addEventListener("click", (event) => {
+        event.stopPropagation();
+        mitgliederPflegen(forum);
+      });
+      li.appendChild(leute);
+    }
+
     if (forum && (forum.creator_id === ME.id || ME.is_admin)) {
       // Damit laesst sich eine Ebene einziehen: erst das neue Oberforum
       // anlegen, dann die vorhandenen daruntersetzen.
@@ -513,6 +531,115 @@ function forumUmhaengen(forum) {
   });
 }
 
+/** Wer ist in diesem Raum - und wer soll noch hinein?
+ *
+ * Bewusst offen fuer jedes Mitglied, nicht nur fuer den Ersteller: ein
+ * Raum, in den nur eine Person jemanden holen kann, steht still, sobald
+ * sie weg ist.
+ */
+async function mitgliederPflegen(forum) {
+  const feld = document.createElement("dialog");
+  feld.className = "card";
+
+  const titel = document.createElement("h3");
+  titel.textContent = t("forum.mitgliederTitel2", { name: forum.name });
+  const hinweis = document.createElement("p");
+  hinweis.className = "muted";
+  hinweis.textContent = t("forum.mitgliederHinweis");
+  const liste = document.createElement("ul");
+  liste.className = "mitgliederliste";
+
+  const dazu = document.createElement("select");
+  const dazuKnopf = document.createElement("button");
+  dazuKnopf.textContent = t("forum.dazuholen");
+  const zu = document.createElement("button");
+  zu.textContent = t("allgemein.schliessen");
+  const fehler = document.createElement("p");
+  fehler.className = "error";
+
+  const reihe = document.createElement("div");
+  reihe.className = "row";
+  reihe.append(dazu, dazuKnopf);
+  const unten = document.createElement("div");
+  unten.className = "row";
+  unten.append(zu);
+  feld.append(titel, hinweis, liste, reihe, fehler, unten);
+  document.body.appendChild(feld);
+  feld.showModal();
+
+  const zeichnen = async () => {
+    fehler.textContent = "";
+    let drin = [];
+    try {
+      drin = await api(`/api/forums/${forum.id}/mitglieder`);
+    } catch (error) {
+      fehler.textContent = error.message;
+      return;
+    }
+    liste.innerHTML = "";
+    for (const person of drin) {
+      const zeile = document.createElement("li");
+      zeile.textContent = person.name;
+      const raus = document.createElement("button");
+      raus.className = "link";
+      raus.textContent =
+        person.user_id === ME.id ? t("forum.selbstGehen") : t("forum.hinauswerfen");
+      raus.addEventListener("click", async () => {
+        try {
+          await api(`/api/forums/${forum.id}/mitglieder/${person.user_id}`,
+                    { method: "DELETE" });
+          if (person.user_id === ME.id) {
+            // Man sieht den Raum jetzt selbst nicht mehr.
+            feld.close();
+            feld.remove();
+            await loadForums();
+            return;
+          }
+          await zeichnen();
+        } catch (error) {
+          fehler.textContent = error.message;
+        }
+      });
+      zeile.appendChild(raus);
+      liste.appendChild(zeile);
+    }
+
+    // /api/personen traegt nur Kennung und Name und steht allen offen -
+    // sonst koennte niemand ausser einem Admin jemanden hereinholen, und
+    // der sieht den Raum gerade nicht.
+    dazu.innerHTML = "";
+    const schon = new Set(drin.map((p) => p.user_id));
+    for (const person of await api("/api/personen")) {
+      if (schon.has(person.user_id)) continue;
+      const option = document.createElement("option");
+      option.value = person.user_id;
+      option.textContent = person.name;
+      dazu.appendChild(option);
+    }
+    dazu.hidden = dazu.options.length === 0;
+    dazuKnopf.hidden = dazu.hidden;
+  };
+
+  dazuKnopf.addEventListener("click", async () => {
+    if (!dazu.value) return;
+    try {
+      await api(`/api/forums/${forum.id}/mitglieder`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: dazu.value }),
+      });
+      await zeichnen();
+    } catch (error) {
+      fehler.textContent = error.message;
+    }
+  });
+  zu.addEventListener("click", () => {
+    feld.close();
+    feld.remove();
+  });
+
+  await zeichnen();
+}
+
 function forumName(id) {
   const forum = FORUMS.find((f) => f.id === id);
   return forum ? forum.name : t("forum.alleThemen");
@@ -553,6 +680,7 @@ $("#forum-form").addEventListener("submit", async (event) => {
         name: $("#f-name").value.trim(),
         description: $("#f-desc").value.trim(),
         parent_id: $("#f-parent").value || null,
+        sichtbar: $("#f-geschlossen").checked ? "geschlossen" : "offen",
       }),
     });
     $("#forum-dialog").close();

@@ -159,6 +159,8 @@ class ForumCreate(BaseModel):
     description: str = ""
     parent_id: str | None = None
     position: int = 0
+    # offen | geschlossen - siehe sichtbare_foren() in app/main.py
+    sichtbar: str = "offen"
 
 
 class ForumUpdate(BaseModel):
@@ -166,6 +168,7 @@ class ForumUpdate(BaseModel):
     description: str | None = None
     parent_id: str | None = None
     position: int | None = None
+    sichtbar: str | None = None
 
 
 class ThreadUpdate(BaseModel):
@@ -197,6 +200,16 @@ class ForumOut(ORMModel):
     parent_id: str | None
     position: int
     creator_id: str
+    sichtbar: str = "offen"
+
+
+class MitgliedOut(BaseModel):
+    user_id: str
+    name: str
+
+
+class MitgliedIn(BaseModel):
+    user_id: str
 
 
 # --- Thread -----------------------------------------------------------------
