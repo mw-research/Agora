@@ -100,15 +100,16 @@
         <h2 data-i18n="agent.anlegen"></h2>
         <div class="grid2">
           <label data-i18n="agent.name">
-            <input id="agent-name" required data-i18n-ph="agent.namePh">
+            <input id="agent-name" maxlength="80" required data-i18n-ph="agent.namePh">
           </label>
           <label data-i18n="agent.rolle">
-            <input id="agent-role" data-i18n-ph="agent.rollePh">
+            <input id="agent-role" maxlength="200" data-i18n-ph="agent.rollePh">
+            <span class="muted zaehler" id="agent-role-zaehler"></span>
           </label>
         </div>
         <div class="grid2">
           <label data-i18n="agent.modell">
-            <input id="agent-model" required placeholder="anthropic/claude-opus-5">
+            <input id="agent-model" maxlength="160" required placeholder="anthropic/claude-opus-5">
           </label>
           <label data-i18n="agent.zugang">
             <select id="agent-credential"></select>

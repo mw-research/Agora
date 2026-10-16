@@ -1528,6 +1528,27 @@ async function handaktePflegen(agent) {
   await zeichnen();
 }
 
+// Die Rolle ist eine ZEILE, keine Beschreibung: sie steht im Auswahlprompt
+// des Moderators, einmal je Teilnehmer, in jedem Zug. Wer hier einen Absatz
+// einsetzt, zahlt ihn in jeder Runde - und frueher brach der Server daran
+// ab, weil die Spalte nur 200 Zeichen fasst. Der Zaehler sagt es vorher.
+function rollenZaehler() {
+  const feld = $("#agent-role");
+  const anzeige = $("#agent-role-zaehler");
+  if (!feld || !anzeige) return;
+  const zeichnen = () => {
+    const uebrig = 200 - feld.value.length;
+    anzeige.textContent = feld.value.length
+      ? t("agent.rolleUebrig", { uebrig })
+      : t("agent.rolleHinweis");
+    anzeige.classList.toggle("knapp", uebrig <= 20);
+  };
+  feld.addEventListener("input", zeichnen);
+  zeichnen();
+}
+
+rollenZaehler();
+
 // Modell-Liste zum gewaehlten Endpunkt. Bewusst auf Knopfdruck und nicht
 // automatisch: der Aufruf geht nach draussen und kostet Zeit, und wer den
 // Namen kennt, tippt ihn schneller. Das Textfeld bleibt massgeblich - die

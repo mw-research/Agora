@@ -505,15 +505,18 @@ async def main_test() -> int:
             assert r.json()["forum_id"] is None, r.json()
 
             # Eigene Beitraege machen nichts ungelesen - wer schreibt, weiss es.
+            # resume=False ist hier wesentlich: sonst weckt der Beitrag den
+            # Thread, der Worker laesst einen Agenten schreiben, und das
+            # Thema ist zu Recht wieder ungelesen - mitten im Test.
             r = await c.post(f"/api/threads/{wandert}/posts", headers=HEAD,
-                             json={"content": "Von mir selbst."})
+                             json={"content": "Von mir selbst.", "resume": False})
             assert r.status_code in (200, 201), r.text
             stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
             assert wandert not in stand["threads"], stand
 
             # Der Beitrag eines anderen schon.
             r = await c.post(f"/api/threads/{wandert}/posts", headers=fremder_kopf,
-                             json={"content": "Von jemand anderem."})
+                             json={"content": "Von jemand anderem.", "resume": False})
             assert r.status_code in (200, 201), r.text
             stand = (await c.get("/api/ungelesen", headers=HEAD)).json()
             assert wandert in stand["threads"], stand

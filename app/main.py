@@ -22,6 +22,7 @@ from fastapi import (
     Response,
     UploadFile,
 )
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, func, select, update
@@ -66,7 +67,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.32.1"
+APP_VERSION = "0.32.2"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -120,6 +121,41 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Agora - Agentenforum", version="0.1.0", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def fehler_eingabe(request: Request, exc: RequestValidationError):
+    """Pruefmeldungen als EIN lesbarer Satz.
+
+    FastAPI liefert hier normalerweise eine Liste von Objekten. Die
+    Oberflaeche liest aber detail als Text - aus einer Liste wird dort
+    "[object Object]", und der Nutzer erfaehrt nicht, welches Feld klemmt.
+    """
+    fehler = (exc.errors() or [{}])[0]
+    # loc ist z.B. ("body", "role"); der erste Teil sagt nur, wo im Aufruf.
+    pfad = [str(teil) for teil in fehler.get("loc", ()) if teil != "body"]
+    feld = ".".join(pfad) or "Eingabe"
+    art = fehler.get("type", "")
+    grenze = (fehler.get("ctx") or {}).get("max_length")
+
+    if art == "string_too_long" and grenze:
+        text = f"Das Feld '{feld}' ist zu lang: hoechstens {grenze} Zeichen."
+    elif art == "string_too_short":
+        mindestens = (fehler.get("ctx") or {}).get("min_length")
+        text = (
+            f"Das Feld '{feld}' ist zu kurz: mindestens {mindestens} Zeichen."
+            if mindestens
+            else f"Das Feld '{feld}' darf nicht leer sein."
+        )
+    elif art == "missing":
+        text = f"Das Feld '{feld}' fehlt."
+    else:
+        text = f"Das Feld '{feld}' passt nicht: {fehler.get('msg', 'ungueltig')}."
+
+    sprache = request.headers.get("x-agora-sprache", "de").lower()[:2]
+    return JSONResponse(
+        status_code=422, content={"detail": meldungen.uebersetze(text, sprache)}
+    )
 
 
 @app.exception_handler(HTTPException)

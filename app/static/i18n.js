@@ -190,6 +190,9 @@ const TEXTE = {
     "agent.namePh": "Kritikerin",
     "agent.rolle": "Rolle (für die Sprecherwahl)",
     "agent.rollePh": "prüft Annahmen und Methodik",
+    "agent.rolleHinweis":
+      "Ein Halbsatz, höchstens 200 Zeichen – er steht in jeder Runde in der Sprecherwahl. Ausführliches gehört in die Persona.",
+    "agent.rolleUebrig": "noch {uebrig} Zeichen – Ausführliches gehört in die Persona",
     "agent.modell": "Modell (LiteLLM-String)",
     "agent.modellListe": "… oder aus dem Endpunkt wählen",
     "agent.modelleHolen": "Modelle abrufen",
@@ -547,6 +550,9 @@ const TEXTE = {
     "agent.namePh": "Reviewer",
     "agent.rolle": "Role (used when picking the next speaker)",
     "agent.rollePh": "checks assumptions and method",
+    "agent.rolleHinweis":
+      "Half a sentence, 200 characters at most – it goes into the speaker choice every round. Anything longer belongs in the persona.",
+    "agent.rolleUebrig": "{uebrig} characters left – longer text belongs in the persona",
     "agent.modell": "Model (LiteLLM string)",
     "agent.modellListe": "… or pick one from the endpoint",
     "agent.modelleHolen": "Fetch models",
@@ -902,6 +908,9 @@ const TEXTE = {
     "agent.namePh": "Рецензент",
     "agent.rolle": "Роль (для выбора следующего говорящего)",
     "agent.rollePh": "проверяет допущения и методику",
+    "agent.rolleHinweis":
+      "Полфразы, не больше 200 символов — она участвует в выборе говорящего каждый раунд. Подробности место в персоне.",
+    "agent.rolleUebrig": "осталось {uebrig} символов — подробности в персону",
     "agent.modell": "Модель (строка LiteLLM)",
     "agent.modellListe": "… или выберите из списка эндпоинта",
     "agent.modelleHolen": "Получить модели",

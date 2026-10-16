@@ -462,3 +462,8 @@ dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin: 1rem
   cursor: help;
   opacity: .8;
 }
+
+/* Zaehler unter der Rollenzeile: sagt vorher, was sonst erst der Server
+   abweist - und wohin der lange Text gehoert. */
+.zaehler { display: block; font-size: .75rem; margin-top: .2rem; }
+.zaehler.knapp { color: var(--warn, #f59e0b); }

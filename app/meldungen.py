@@ -104,6 +104,16 @@ EN: dict[str, str] = {
 
 # Zusammengesetzte Meldungen: Muster statt fester Text.
 MUSTER: list[tuple[re.Pattern[str], str]] = [
+    # Pruefmeldungen aus fehler_eingabe() in app/main.py
+    (re.compile(r"^Das Feld '(.+)' ist zu lang: hoechstens (\d+) Zeichen\.$"),
+     r"The field '\1' is too long: at most \2 characters."),
+    (re.compile(r"^Das Feld '(.+)' ist zu kurz: mindestens (\d+) Zeichen\.$"),
+     r"The field '\1' is too short: at least \2 characters."),
+    (re.compile(r"^Das Feld '(.+)' darf nicht leer sein\.$"),
+     r"The field '\1' must not be empty."),
+    (re.compile(r"^Das Feld '(.+)' fehlt\.$"), r"The field '\1' is missing."),
+    (re.compile(r"^Das Feld '(.+)' passt nicht: (.+)\.$"),
+     r"The field '\1' is not valid: \2."),
     (re.compile(r"^Zu viele Fehlversuche\. Naechster Versuch in (\d+) Minuten\.$"),
      r"Too many failed attempts. Next try in \1 minutes."),
     (re.compile(r"^Der Antrag ist bereits freigegeben\.$"),

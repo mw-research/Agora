@@ -98,10 +98,10 @@ class CredentialCreate(BaseModel):
     label: str = Field(min_length=1, max_length=80)
     provider: str = Field(min_length=1, max_length=40)
     api_key: str | None = None
-    api_base: str | None = None
+    api_base: str | None = Field(default=None, max_length=300)
     # api_key | bearer | header | none
-    auth_style: str = "api_key"
-    header_name: str | None = None
+    auth_style: str = Field(default="api_key", max_length=20)
+    header_name: str | None = Field(default=None, max_length=80)
     # Freie LiteLLM-Parameter als JSON-Text, z.B. {"api_version": "2024-10-21"}
     extra_json: str | None = None
 
@@ -121,20 +121,26 @@ class CredentialOut(ORMModel):
 class AgentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     model: str = Field(min_length=1, max_length=160)
-    role: str = ""
+    # Kurz, und zwar mit Absicht: die Rolle steht als EINE Zeile im
+    # Auswahlprompt des Moderators, einmal je Teilnehmer, in jedem Zug.
+    # Ein Absatz hier kostet in jeder Runde. Lange Beschreibungen gehoeren
+    # in die Persona, die ist unbegrenzt.
+    role: str = Field(default="", max_length=200)
     persona: str = ""
-    credential_id: str | None = None
+    credential_id: str | None = Field(default=None, max_length=32)
     temperature: float = 0.7
     max_tokens: int = 1200
     is_public: bool = True
 
 
 class AgentUpdate(BaseModel):
-    name: str | None = None
-    model: str | None = None
-    role: str | None = None
+    # Dieselben Grenzen wie beim Anlegen - sonst ist das Aendern die
+    # Hintertuer, durch die zu lange Werte doch in die Datenbank kommen.
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    model: str | None = Field(default=None, min_length=1, max_length=160)
+    role: str | None = Field(default=None, max_length=200)
     persona: str | None = None
-    credential_id: str | None = None
+    credential_id: str | None = Field(default=None, max_length=32)
     temperature: float | None = None
     max_tokens: int | None = None
     is_public: bool | None = None
@@ -167,18 +173,18 @@ class AgentOut(ORMModel):
 class ForumCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = ""
-    parent_id: str | None = None
+    parent_id: str | None = Field(default=None, max_length=32)
     position: int = 0
     # offen | geschlossen - siehe sichtbare_foren() in app/main.py
-    sichtbar: str = "offen"
+    sichtbar: str = Field(default="offen", max_length=12)
 
 
 class ForumUpdate(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = None
-    parent_id: str | None = None
+    parent_id: str | None = Field(default=None, max_length=32)
     position: int | None = None
-    sichtbar: str | None = None
+    sichtbar: str | None = Field(default=None, max_length=12)
 
 
 class ThreadUpdate(BaseModel):
@@ -190,7 +196,7 @@ class ThreadUpdate(BaseModel):
     """
 
     title: str | None = Field(default=None, min_length=1, max_length=200)
-    forum_id: str | None = None
+    forum_id: str | None = Field(default=None, max_length=32)
 
 
 class UngelesenOut(BaseModel):
@@ -232,15 +238,15 @@ class SicherungAnfrage(BaseModel):
 class ThreadCreate(BaseModel):
     title: str = Field(min_length=3, max_length=200)
     # frei | pruefen | begutachten | antrag | code - siehe app/pruefarten.py
-    art: str = "frei"
+    art: str = Field(default="frei", max_length=20)
     goal: str = ""
-    forum_id: str | None = None
+    forum_id: str | None = Field(default=None, max_length=32)
     agent_ids: list[str] = Field(min_length=1)
-    mode: str = "selector"
-    moderator_agent_id: str | None = None
+    mode: str = Field(default="selector", max_length=20)
+    moderator_agent_id: str | None = Field(default=None, max_length=32)
     max_rounds: int = Field(default=12, ge=1)
     pace_seconds: int = Field(default=5, ge=0, le=3600)
-    stop_phrase: str = "EINVERSTANDEN"
+    stop_phrase: str = Field(default="EINVERSTANDEN", max_length=60)
     synthesize_on_end: bool = True
     start_now: bool = True
     # Nur wirksam, wenn der Server es erlaubt (AGORA_WERKZEUGE).
