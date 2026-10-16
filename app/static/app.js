@@ -164,6 +164,10 @@ $("#antrag-form").addEventListener("submit", async (event) => {
 
 /** Wird von i18n.js nach einem Sprachwechsel gerufen. */
 async function nachSprachwechsel() {
+  // Vor dem Ausstieg: die Zaehler haengen an Feldern, die es auch ohne
+  // Anmeldung im Dokument gibt, und ihr Text kommt aus t() statt aus
+  // data-i18n - uebersetzeSeite() fasst sie also nicht an.
+  for (const zeichnen of ZAEHLER) zeichnen();
   if (!ME) return; // Auf der Anmeldeseite genuegt uebersetzeSeite()
   zeichneSchloss();
   zeichneTeilnahme();
@@ -1532,22 +1536,58 @@ async function handaktePflegen(agent) {
 // des Moderators, einmal je Teilnehmer, in jedem Zug. Wer hier einen Absatz
 // einsetzt, zahlt ihn in jeder Runde - und frueher brach der Server daran
 // ab, weil die Spalte nur 200 Zeichen fasst. Der Zaehler sagt es vorher.
-function rollenZaehler() {
-  const feld = $("#agent-role");
-  const anzeige = $("#agent-role-zaehler");
+// Die Zaehler muessen nach einem Sprachwechsel neu geschrieben werden:
+// ihr Text kommt aus t() und nicht aus data-i18n, uebersetzeSeite() fasst
+// sie also nicht an.
+const ZAEHLER = [];
+
+/** Haengt einen Zeichenzaehler an ein Feld.
+ *
+ * beschriften(laenge) liefert {text, warnen} - was gezaehlt wird und wann
+ * es zu viel ist, entscheidet jedes Feld fuer sich.
+ */
+function zaehlerAnhaengen(feldId, anzeigeId, beschriften) {
+  const feld = $(feldId);
+  const anzeige = $(anzeigeId);
   if (!feld || !anzeige) return;
   const zeichnen = () => {
-    const uebrig = 200 - feld.value.length;
-    anzeige.textContent = feld.value.length
-      ? t("agent.rolleUebrig", { uebrig })
-      : t("agent.rolleHinweis");
-    anzeige.classList.toggle("knapp", uebrig <= 20);
+    const { text, warnen } = beschriften(feld.value.length);
+    anzeige.textContent = text;
+    anzeige.classList.toggle("knapp", Boolean(warnen));
   };
   feld.addEventListener("input", zeichnen);
+  ZAEHLER.push(zeichnen);
   zeichnen();
 }
 
-rollenZaehler();
+// Ein Token deckt im Deutschen grob dreieinhalb Zeichen. Die Zahl soll eine
+// Groessenordnung geben, keine Abrechnung sein.
+const ZEICHEN_JE_TOKEN = 3.5;
+
+// Ab hier faengt die Persona an, mit der Anweisung fuer den einzelnen Zug zu
+// konkurrieren. Keine Grenze - die Spalte ist Text und unbegrenzt -, nur der
+// Punkt, ab dem es einen Hinweis wert ist.
+const PERSONA_VIEL = 3000;
+
+// Die Rolle hat eine harte Grenze: sie steht in einer VARCHAR(200)-Spalte
+// und in jeder Runde in der Sprecherwahl.
+zaehlerAnhaengen("#agent-role", "#agent-role-zaehler", (laenge) => ({
+  text: laenge ? t("agent.rolleUebrig", { uebrig: 200 - laenge }) : t("agent.rolleHinweis"),
+  warnen: 200 - laenge <= 20,
+}));
+
+// Die Persona hat keine - aber sie liegt in JEDEM Aufruf dieses Agenten.
+zaehlerAnhaengen("#agent-persona", "#agent-persona-zaehler", (laenge) => {
+  if (!laenge) return { text: t("agent.personaHinweis"), warnen: false };
+  const token = Math.round(laenge / ZEICHEN_JE_TOKEN);
+  const viel = laenge > PERSONA_VIEL;
+  return {
+    text: viel
+      ? t("agent.personaViel", { zeichen: laenge, token })
+      : t("agent.personaUmfang", { zeichen: laenge, token }),
+    warnen: viel,
+  };
+});
 
 // Modell-Liste zum gewaehlten Endpunkt. Bewusst auf Knopfdruck und nicht
 // automatisch: der Aufruf geht nach draussen und kostet Zeit, und wer den

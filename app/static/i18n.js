@@ -193,6 +193,11 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Ein Halbsatz, höchstens 200 Zeichen – er steht in jeder Runde in der Sprecherwahl. Ausführliches gehört in die Persona.",
     "agent.rolleUebrig": "noch {uebrig} Zeichen – Ausführliches gehört in die Persona",
+    "agent.personaHinweis":
+      "Wie dieser Agent urteilt und schreibt. Liegt in jedem seiner Aufrufe – was er wissen soll, gehört in „Eigenes Material“, nicht hierher.",
+    "agent.personaUmfang": "{zeichen} Zeichen – rund {token} Token in jeder Runde.",
+    "agent.personaViel":
+      "{zeichen} Zeichen – rund {token} Token in jeder Runde. Das ist viel: ein langer Ablauf konkurriert mit der Anweisung für den einzelnen Beitrag. Unterlagen gehören in „Eigenes Material“, Arbeitsschritte ins Ziel des Themas.",
     "agent.modell": "Modell (LiteLLM-String)",
     "agent.modellListe": "… oder aus dem Endpunkt wählen",
     "agent.modelleHolen": "Modelle abrufen",
@@ -553,6 +558,11 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Half a sentence, 200 characters at most – it goes into the speaker choice every round. Anything longer belongs in the persona.",
     "agent.rolleUebrig": "{uebrig} characters left – longer text belongs in the persona",
+    "agent.personaHinweis":
+      "How this agent judges and writes. It sits in every one of its calls – what it should know belongs in \u201cOwn material\u201d, not here.",
+    "agent.personaUmfang": "{zeichen} characters – roughly {token} tokens every round.",
+    "agent.personaViel":
+      "{zeichen} characters – roughly {token} tokens every round. That is a lot: a long procedure competes with the instruction for the single post. Documents belong in \u201cOwn material\u201d, working steps in the topic\u2019s goal.",
     "agent.modell": "Model (LiteLLM string)",
     "agent.modellListe": "… or pick one from the endpoint",
     "agent.modelleHolen": "Fetch models",
@@ -911,6 +921,11 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Полфразы, не больше 200 символов — она участвует в выборе говорящего каждый раунд. Подробности место в персоне.",
     "agent.rolleUebrig": "осталось {uebrig} символов — подробности в персону",
+    "agent.personaHinweis":
+      "Как этот агент рассуждает и пишет. Входит в каждый его запрос — то, что он должен знать, место в «Своих материалах», а не здесь.",
+    "agent.personaUmfang": "{zeichen} символов — примерно {token} токенов в каждом раунде.",
+    "agent.personaViel":
+      "{zeichen} символов — примерно {token} токенов в каждом раунде. Это много: длинный порядок действий конкурирует с указанием для отдельного сообщения. Документы — в «Свои материалы», шаги работы — в цель темы.",
     "agent.modell": "Модель (строка LiteLLM)",
     "agent.modellListe": "… или выберите из списка эндпоинта",
     "agent.modelleHolen": "Получить модели",
