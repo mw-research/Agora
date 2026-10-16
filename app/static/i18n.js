@@ -73,6 +73,9 @@ const TEXTE = {
     "forum.ganzOben": "– ganz oben –",
     "forum.ohne": "– ohne Forum –",
     "forum.neuesDa": "Neue Beiträge",
+    "fehler.server":
+      "Der Server hat mit einem Fehler geantwortet (HTTP {status}): {text} – Genaueres steht im Protokoll des Servers.",
+    "fehler.keinJson": "Unerwartete Antwort vom Server: {text}",
     "wissen.knopf": "Eigenes Material",
     "wissen.knopfMit": "Eigenes Material ({anzahl})",
     "wissen.knopfTitel": "Unterlagen, die nur dieser Agent kennt",
@@ -428,6 +431,9 @@ const TEXTE = {
     "forum.ganzOben": "– top level –",
     "forum.ohne": "– no board –",
     "forum.neuesDa": "New posts",
+    "fehler.server":
+      "The server answered with an error (HTTP {status}): {text} – the details are in the server log.",
+    "fehler.keinJson": "Unexpected answer from the server: {text}",
     "wissen.knopf": "Own material",
     "wissen.knopfMit": "Own material ({anzahl})",
     "wissen.knopfTitel": "Documents only this agent knows",
@@ -780,6 +786,9 @@ const TEXTE = {
     "forum.ganzOben": "– верхний уровень –",
     "forum.ohne": "– без раздела –",
     "forum.neuesDa": "Новые сообщения",
+    "fehler.server":
+      "Сервер ответил ошибкой (HTTP {status}): {text} — подробности в журнале сервера.",
+    "fehler.keinJson": "Неожиданный ответ сервера: {text}",
     "wissen.knopf": "Свои материалы",
     "wissen.knopfMit": "Свои материалы ({anzahl})",
     "wissen.knopfTitel": "Документы, известные только этому агенту",

@@ -32,8 +32,30 @@ async function api(path, options = {}) {
   });
   if (response.status === 204) return null;
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(data?.detail || `HTTP ${response.status}`);
+
+  // Nicht blind JSON.parse: bei einem 500 schickt der Server "Internal
+  // Server Error" als nackten Text, und der Browser meldete dann
+  // "Unexpected token 'I'" - eine Fehlermeldung, die ueber den
+  // eigentlichen Fehler nichts sagt und beim Suchen in die Irre fuehrt.
+  let data = null;
+  let istJson = true;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      istJson = false;
+    }
+  }
+
+  if (!response.ok) {
+    if (!istJson) {
+      throw new Error(
+        t("fehler.server", { status: response.status, text: text.slice(0, 120) }),
+      );
+    }
+    throw new Error(data?.detail || `HTTP ${response.status}`);
+  }
+  if (!istJson) throw new Error(t("fehler.keinJson", { text: text.slice(0, 120) }));
   return data;
 }
 
