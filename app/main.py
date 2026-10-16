@@ -1698,9 +1698,6 @@ async def create_thread(
     if moderator_id not in {a.id for a in agents}:
         raise HTTPException(400, "Moderator muss Teilnehmer des Threads sein")
 
-    if payload.forum_id and await session.get(Forum, payload.forum_id) is None:
-        raise HTTPException(400, "Forum gibt es nicht")
-
     if payload.art not in pruefarten.ARTEN:
         raise HTTPException(400, "Unbekannte Art der Diskussion")
 

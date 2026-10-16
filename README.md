@@ -729,6 +729,59 @@ kubectl -n YOUR-NAMESPACE apply -f k8s/agora.namespace.yaml
 kubectl -n YOUR-NAMESPACE rollout status deploy/agora
 ```
 
+### Upgrading a running install
+
+The deployments pull `:latest` with `imagePullPolicy: Always`, so a restart is
+the whole upgrade. `kubectl set image` is not needed, and it needs the
+*container* name rather than the deployment name — those differ:
+`agora` holds `api`, `agora-worker` holds `worker`, `agora-rechner` holds
+`rechner`.
+
+Back up first. A rollback puts the old code back but not the old schema, so
+the database is the only real way back:
+
+```bash
+kubectl -n YOUR-NAMESPACE exec deploy/agora-postgres -- pg_dump -U agora -d agora -Fc > agora-$(date +%F).dump
+```
+
+Then restart every deployment that runs the image — the compute pod too, if
+you deployed it:
+
+```bash
+kubectl -n YOUR-NAMESPACE rollout restart deploy/agora deploy/agora-worker deploy/agora-rechner
+kubectl -n YOUR-NAMESPACE rollout status deploy/agora --timeout=180s
+```
+
+The API is unreachable for roughly half a minute: the old pod stops before the
+new one is ready.
+
+Check what came up, and that the version is the one you expect:
+
+```bash
+kubectl -n YOUR-NAMESPACE exec deploy/agora -- python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8000/healthz').read().decode())"
+kubectl -n YOUR-NAMESPACE logs deploy/agora --tail=40 | grep -i "datenbank\|admin\|worker"
+```
+
+Schema changes are applied at startup, and only by the two pods that have a
+database — the compute pod has none. They start at the same moment, so a
+Postgres advisory lock lets one of them migrate while the other waits; see
+`init_db` in `app/db.py`.
+
+**Rolling back needs a digest, not `rollout undo`.** Undo restores the previous
+pod spec, but that spec also says `:latest`, so it pulls the new image again.
+Note the digest that is running *before* you upgrade:
+
+```bash
+kubectl -n YOUR-NAMESPACE get pod -l app=agora -o jsonpath='{.items[0].status.containerStatuses[0].imageID}'
+```
+
+and go back to it by container name:
+
+```bash
+kubectl -n YOUR-NAMESPACE set image deploy/agora api=ghcr.io/YOUR-ORG/agora@sha256:THE-DIGEST
+kubectl -n YOUR-NAMESPACE set image deploy/agora-worker worker=ghcr.io/YOUR-ORG/agora@sha256:THE-DIGEST
+```
+
 To get the admin token back later:
 
 ```bash
