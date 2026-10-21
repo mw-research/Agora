@@ -173,6 +173,14 @@ async def _teilnahme_offen(session: AsyncSession, thread: Thread, agent: Agent) 
     eigenen Beitrag weiterdiskutieren duerfen. Ohne diese Grenze koennte
     jemand anders einen Thread endlos auf fremde Kosten laufen lassen.
     """
+    # Ein Muster-Agent gehoert allen und niemandem. Ihn an das
+    # Teilnahmefenster eines Admins zu binden hiesse, dass er in fremden
+    # Diskussionen stehenbleibt, sobald dieser eine Weile nichts schreibt -
+    # und das Fenster ist dafuer da, FREMDE Kosten zu begrenzen. Bei einem
+    # Gemeinschaftszugang gibt es die nicht.
+    if agent.geteilt:
+        return True
+
     besitzer = await session.get(User, agent.owner_id)
     stunden = (besitzer.teilnahme_stunden if besitzer else 0) or 0
     if stunden <= 0:

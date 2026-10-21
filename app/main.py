@@ -42,7 +42,7 @@ from . import (
     werkzeuge,
 )
 from .config import get_settings
-from .crypto import check_ready, decrypt as server_entschluesseln
+from .crypto import check_ready, decrypt as server_entschluesseln, encrypt as server_verschluesseln
 from .db import SessionLocal, get_session, init_db
 from .events import bus
 from .models import (
@@ -67,7 +67,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.34.0"
+APP_VERSION = "0.35.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -383,6 +383,10 @@ async def _zugaenge_umstellen(session: AsyncSession, user: User, dk: bytes) -> N
                 select(Credential).where(
                     Credential.owner_id == user.id,
                     (Credential.enc_scheme.is_(None)) | (Credential.enc_scheme != "user"),
+                    # Ein Gemeinschaftszugang bleibt am Serverschluessel -
+                    # sonst haengt er nach dem naechsten Freischalten des
+                    # Admins an dessen PIN, und alle anderen schauen zu.
+                    Credential.geteilt.is_not(True),
                 )
             )
         )
@@ -1025,6 +1029,8 @@ def _credential_out(cred: Credential) -> schemas.CredentialOut:
         auth_style=cred.auth_style or "api_key",
         header_name=cred.header_name,
         has_extra=bool(cred.extra_json_enc),
+        geteilt=bool(cred.geteilt),
+        owner_id=cred.owner_id,
     )
 
 
@@ -1032,10 +1038,16 @@ def _credential_out(cred: Credential) -> schemas.CredentialOut:
 async def list_credentials(
     user: User = Depends(current_user), session: AsyncSession = Depends(get_session)
 ):
+    # Die eigenen und die, die ein Admin fuer alle hinterlegt hat. Der
+    # Schluessel selbst geht ohnehin nie hinaus, nur has_key.
     rows = (
         (
             await session.execute(
-                select(Credential).where(Credential.owner_id == user.id).order_by(Credential.label)
+                select(Credential)
+                .where(
+                    (Credential.owner_id == user.id) | (Credential.geteilt.is_(True))
+                )
+                .order_by(Credential.label)
             )
         )
         .scalars()
@@ -1052,6 +1064,8 @@ async def create_credential(
 ):
     if payload.auth_style not in ("api_key", "bearer", "header", "none"):
         raise HTTPException(400, "auth_style muss api_key, bearer, header oder none sein")
+    if payload.geteilt and not user.is_admin:
+        raise HTTPException(403, "Einen Zugang fuer alle darf nur ein Admin hinterlegen.")
     if payload.extra_json:
         try:
             geparst = json.loads(payload.extra_json)
@@ -1059,6 +1073,33 @@ async def create_credential(
             raise HTTPException(400, f"Zusatzparameter sind kein gueltiges JSON: {exc}") from exc
         if not isinstance(geparst, dict):
             raise HTTPException(400, "Zusatzparameter muessen ein JSON-Objekt sein")
+
+    if payload.geteilt:
+        # Am Serverschluessel, nicht an einer PIN. Sonst stuende der Zugang
+        # still, sobald das Freischaltfenster des Admins ablaeuft - und mit
+        # ihm jeder Muster-Agent, fuer alle. Was das kostet, steht an der
+        # Spalte in models.Credential.
+        cred = Credential(
+            owner_id=user.id,
+            label=payload.label,
+            provider=payload.provider.strip().strip("/"),
+            api_key_enc=server_verschluesseln(payload.api_key) if payload.api_key else None,
+            api_base=payload.api_base or None,
+            auth_style=payload.auth_style,
+            header_name=payload.header_name or None,
+            extra_json_enc=(
+                server_verschluesseln(payload.extra_json) if payload.extra_json else None
+            ),
+            enc_scheme="server",
+            geteilt=True,
+        )
+        session.add(cred)
+        await session.commit()
+        log.warning(
+            "Admin %s hat den Gemeinschaftszugang '%s' hinterlegt (am Serverschluessel)",
+            user.name, cred.label,
+        )
+        return _credential_out(cred)
 
     try:
         dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
@@ -1092,8 +1133,31 @@ async def delete_credential(
     session: AsyncSession = Depends(get_session),
 ):
     cred = await session.get(Credential, credential_id)
-    if cred is None or cred.owner_id != user.id:
+    eigener = cred is not None and cred.owner_id == user.id and not cred.geteilt
+    gemeinsam = cred is not None and cred.geteilt and user.is_admin
+    if cred is None or not (eigener or gemeinsam):
         raise HTTPException(404, "Nicht gefunden")
+
+    if cred.geteilt:
+        # Haengen noch Muster-Agenten daran, stuenden die danach ohne Modell
+        # da - und zwar fuer alle gleichzeitig. Lieber hier abweisen als
+        # stumm kaputtgehen lassen.
+        daran = (
+            await session.execute(
+                select(func.count())
+                .select_from(Agent)
+                .where(Agent.credential_id == cred.id)
+            )
+        ).scalar_one()
+        if daran:
+            raise HTTPException(
+                409,
+                f"An diesem Zugang haengen noch {daran} Agenten. Nimm sie erst "
+                "weg oder haenge sie um.",
+            )
+        log.warning("Admin %s hat den Gemeinschaftszugang '%s' entfernt",
+                    user.name, cred.label)
+
     await session.delete(cred)
     await session.commit()
 
@@ -1111,15 +1175,20 @@ async def modelle_auflisten(
     Satz zurueck und nicht als Absturz.
     """
     cred = await session.get(Credential, credential_id)
-    if cred is None or cred.owner_id != user.id:
+    if cred is None or not (cred.owner_id == user.id or cred.geteilt):
         raise HTTPException(404, "Zugang nicht gefunden")
 
-    try:
-        dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
-    except tresor.GesperrtFehler as exc:
-        raise HTTPException(
-            409, f"{exc} Melde dich mit deiner PIN an, dann sehe ich im Endpunkt nach."
-        ) from exc
+    if cred.geteilt:
+        # Haengt am Serverschluessel, also ohne PIN lesbar - genau dafuer
+        # ist er da.
+        dk = None
+    else:
+        try:
+            dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
+        except tresor.GesperrtFehler as exc:
+            raise HTTPException(
+                409, f"{exc} Melde dich mit deiner PIN an, dann sehe ich im Endpunkt nach."
+            ) from exc
 
     # Dieselbe Entschluesselung wie beim Modellaufruf - nicht nachgebaut,
     # sonst laufen die beiden Wege irgendwann auseinander.
@@ -1149,7 +1218,11 @@ async def list_agents(
         (
             await session.execute(
                 select(Agent)
-                .where((Agent.owner_id == user.id) | (Agent.is_public.is_(True)))
+                .where(
+                    (Agent.owner_id == user.id)
+                    | (Agent.is_public.is_(True))
+                    | (Agent.geteilt.is_(True))
+                )
                 .order_by(Agent.name)
             )
         )
@@ -1159,20 +1232,76 @@ async def list_agents(
     return await _mit_aktenvermerk(session, list(gefunden))
 
 
+async def _zugang_pruefen(
+    session: AsyncSession, user: User, credential_id: str | None, geteilt: bool
+) -> None:
+    """Passt der Modell-Zugang zu dem, was der Agent sein soll?
+
+    Zwei Richtungen, und beide sind wichtig:
+
+    Ein eigener Agent darf nur an einem eigenen Zugang haengen - sonst
+    liefe er auf fremde Rechnung. Einen Gemeinschaftszugang darf ein
+    einzelner Agent ebenfalls nicht greifen; er ist fuer die Muster-Agenten
+    da, die ein Admin fuer alle aufstellt, nicht dafuer, dass sich jeder
+    einen eigenen daranhaengt.
+
+    Ein Muster-Agent umgekehrt MUSS an einem Gemeinschaftszugang haengen.
+    Haengt er am persoenlichen Zugang des Admins, steht er still, sobald
+    dessen Freischaltfenster ablaeuft - fuer alle gleichzeitig.
+    """
+    if geteilt and not user.is_admin:
+        raise HTTPException(403, "Einen Muster-Agenten darf nur ein Admin aufstellen.")
+
+    if not credential_id:
+        if geteilt:
+            raise HTTPException(
+                400,
+                "Ein Muster-Agent braucht einen Gemeinschaftszugang - sonst hat "
+                "er kein Modell, mit dem er sprechen kann.",
+            )
+        return
+
+    cred = await session.get(Credential, credential_id)
+    if cred is None:
+        raise HTTPException(400, "Credential gehoert dir nicht")
+
+    if geteilt:
+        if not cred.geteilt:
+            raise HTTPException(
+                400,
+                "Ein Muster-Agent braucht einen Zugang fuer alle. Ein "
+                "persoenlicher Zugang steht still, sobald dein "
+                "Freischaltfenster ablaeuft - dann koennte ihn niemand mehr "
+                "benutzen.",
+            )
+        return
+
+    if cred.geteilt:
+        raise HTTPException(
+            400,
+            "Der Zugang fuer alle ist den Muster-Agenten vorbehalten. Fuer "
+            "einen eigenen Agenten nimm einen eigenen Zugang.",
+        )
+    if cred.owner_id != user.id:
+        raise HTTPException(400, "Credential gehoert dir nicht")
+
+
 @app.post("/api/agents", response_model=schemas.AgentOut, status_code=201)
 async def create_agent(
     payload: schemas.AgentCreate,
     user: User = Depends(current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    if payload.credential_id:
-        cred = await session.get(Credential, payload.credential_id)
-        if cred is None or cred.owner_id != user.id:
-            raise HTTPException(400, "Credential gehoert dir nicht")
+    await _zugang_pruefen(session, user, payload.credential_id, payload.geteilt)
     agent = Agent(owner_id=user.id, **payload.model_dump())
     session.add(agent)
     await session.commit()
     await session.refresh(agent)
+    if agent.geteilt:
+        log.warning(
+            "Admin %s hat den Muster-Agenten '%s' fuer alle aufgestellt",
+            user.name, agent.name,
+        )
     return agent
 
 
@@ -1184,21 +1313,41 @@ async def update_agent(
     session: AsyncSession = Depends(get_session),
 ):
     agent = await session.get(Agent, agent_id)
-    if agent is None or agent.owner_id != user.id:
+    # Einen Muster-Agenten pflegt jeder Admin, nicht nur der, der ihn
+    # aufgestellt hat - sonst haengt er an einer Person.
+    eigener = agent is not None and agent.owner_id == user.id
+    musteragent = agent is not None and agent.geteilt and user.is_admin
+    if agent is None or not (eigener or musteragent):
         raise HTTPException(404, "Nicht gefunden")
+
     werte = payload.model_dump(exclude_unset=True)
     # Beim Anlegen wird das geprueft, beim Aendern muss es genauso gelten -
-    # sonst liesse sich ein fremder Zugang unterschieben und auf fremde
-    # Kosten nutzen.
-    if werte.get("credential_id"):
-        cred = await session.get(Credential, werte["credential_id"])
-        if cred is None or cred.owner_id != user.id:
-            raise HTTPException(400, "Credential gehoert dir nicht")
+    # sonst ist das Aendern die Hintertuer neben dem Anlegen.
+    await _zugang_pruefen(
+        session,
+        user,
+        werte.get("credential_id", agent.credential_id),
+        bool(werte.get("geteilt", agent.geteilt)),
+    )
     for key, value in werte.items():
         setattr(agent, key, value)
     await session.commit()
     await session.refresh(agent)
     return agent
+
+
+def darf_einsetzen(agent: Agent, user: User) -> bool:
+    """Darf diese Person den Agenten in eine Diskussion holen?
+
+    Der eigene immer. Ein fremder nicht - er liefe auf dem Modell-Zugang
+    seines Besitzers, also auf dessen Rechnung; sichtbar heisst nicht
+    benutzbar.
+
+    Ein Muster-Agent schon: den hat ein Admin fuer alle angelegt, und er
+    laeuft auf einem Gemeinschaftszugang. Da ist niemandes Rechnung
+    betroffen, die das nicht selbst entschieden hat.
+    """
+    return agent.owner_id == user.id or bool(agent.geteilt)
 
 
 async def _mit_aktenvermerk(
@@ -1343,8 +1492,12 @@ async def delete_agent(
     session: AsyncSession = Depends(get_session),
 ):
     agent = await session.get(Agent, agent_id)
-    if agent is None or agent.owner_id != user.id:
+    eigener = agent is not None and agent.owner_id == user.id
+    musteragent = agent is not None and agent.geteilt and user.is_admin
+    if agent is None or not (eigener or musteragent):
         raise HTTPException(404, "Nicht gefunden")
+    if agent.geteilt and not user.is_admin:
+        raise HTTPException(403, "Einen Muster-Agenten entfernt nur ein Admin.")
     await session.delete(agent)
     await session.commit()
 
@@ -1709,7 +1862,7 @@ async def create_thread(
         # Besitzers, also auf dessen Rechnung - wer mitdiskutieren will,
         # holt seinen eigenen dazu. Oeffentlich heisst sichtbar, nicht
         # benutzbar.
-        if agent.owner_id != user.id:
+        if not darf_einsetzen(agent, user):
             raise HTTPException(
                 403,
                 f"'{agent.name}' gehoert jemand anderem. Eigene Agenten kannst du "
@@ -1984,8 +2137,8 @@ async def add_participant(
     agent = await session.get(Agent, payload.agent_id)
     if agent is None:
         raise HTTPException(400, "Agent nicht verfuegbar")
-    # Siehe oben: fremde Agenten kosten fremdes Geld.
-    if agent.owner_id != user.id:
+    # Siehe oben: fremde Agenten kosten fremdes Geld, Muster-Agenten nicht.
+    if not darf_einsetzen(agent, user):
         raise HTTPException(
             403,
             f"'{agent.name}' gehoert jemand anderem. Eigene Agenten kannst du "

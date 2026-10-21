@@ -137,6 +137,12 @@
             <span data-i18n="agent.oeffentlich"></span>
           </label>
         </div>
+        <div class="grid2">
+          <label class="check" id="agent-geteilt-zeile" hidden>
+            <input type="checkbox" id="agent-geteilt">
+            <span data-i18n="agent.musterAgent"></span>
+          </label>
+        </div>
         <div class="row">
           <button type="submit" class="primary" id="agent-speichern"
                   data-i18n="agent.speichern"></button>
@@ -198,6 +204,12 @@
         <label data-i18n="zugang.zusatz">
           <textarea id="cred-extra" rows="2" placeholder='{"api_version": "2024-10-21"}'></textarea>
         </label>
+        <label class="check" id="cred-geteilt-zeile" hidden>
+          <input type="checkbox" id="cred-geteilt">
+          <span data-i18n="zugang.fuerAlle"></span>
+        </label>
+        <p class="muted" id="cred-geteilt-hinweis" hidden
+           data-i18n="zugang.fuerAlleHinweis"></p>
         <button type="submit" class="primary" data-i18n="zugang.speichern"></button>
         <p class="error" id="cred-error"></p>
       </form>

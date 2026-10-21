@@ -140,9 +140,20 @@ class Credential(Base):
     # Geheimnisse stehen koennen.
     extra_json_enc: Mapped[str | None] = mapped_column(Text, nullable=True)
     # "user" = mit dem Datenschluessel der Person verschluesselt (Normalfall),
-    # leer/"server" = alter Stand mit dem Serverschluessel. Beim ersten
-    # Freischalten wird umgestellt.
+    # leer/"server" = mit dem Serverschluessel. Beim ersten Freischalten wird
+    # umgestellt - ausser bei geteilten Zugaengen, siehe unten.
     enc_scheme: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+    # Ein Zugang fuer alle, von einem Admin hinterlegt. Er liegt bewusst am
+    # SERVERschluessel und nicht an einer PIN: sonst stuende er still, sobald
+    # der Admin sich abmeldet oder sein Freischaltfenster ablaeuft, und mit
+    # ihm jeder Muster-Agent.
+    #
+    # Das ist ein Tausch und keine Verbesserung: wer die Datenbank und
+    # AGORA_SECRET_KEY hat, liest ihn. Fuer ein Modell im eigenen Haus, das
+    # nichts kostet, ist das richtig. Fuer einen bezahlten Schluessel beim
+    # Anbieter nicht - deshalb sagt es die Oberflaeche beim Anlegen auch so.
+    geteilt: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -163,8 +174,14 @@ class Agent(Base):
     )
     temperature: Mapped[float] = mapped_column(Float, default=0.7)
     max_tokens: Mapped[int] = mapped_column(Integer, default=1200)
-    # Oeffentliche Agenten duerfen von allen in Threads eingeladen werden.
+    # Oeffentlich heisst bisher nur: sichtbar. Benutzen darf einen Agenten
+    # sonst nur sein Besitzer, weil er auf dessen Modell-Zugang laeuft.
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Muster-Agent: von einem Admin fuer alle angelegt. Den darf jeder in
+    # seine Diskussionen holen, weil er auf einem Gemeinschaftszugang laeuft
+    # und nicht auf der Rechnung einer einzelnen Person.
+    geteilt: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     credential: Mapped[Credential | None] = relationship(lazy="selectin")

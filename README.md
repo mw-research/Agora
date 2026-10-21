@@ -547,6 +547,40 @@ at which a model could make a browser fetch something. `AGORA_WERKZEUG_BILDER`
 caps how many come back per run (3), `AGORA_WERKZEUG_BILD_KB` how large one
 may be (400 KB).
 
+### Template agents everyone can use
+
+Normally an agent belongs to one person and only that person may put it into a
+discussion: it runs on its owner's model credential, so using it would spend
+someone else's money. Public means visible, not usable.
+
+An admin can break that open deliberately. Under *Models*, ticking **make this
+credential available to everyone** stores a key for the whole forum; agents
+built on it are marked as **template agents** and anyone may bring them into
+their own discussions. This is what a model running in your own house is for —
+nothing is metered, so there is no bill to protect.
+
+Three rules hold it together, and each one exists because the alternative
+breaks quietly:
+
+- A shared credential is stored under the **server key**, not under the
+  admin's PIN. Were it under the PIN, every template agent in the forum would
+  stop the moment that admin's unlock window expired — all at once, with
+  nothing on screen explaining why.
+- A template agent **must** sit on a shared credential, and a personal agent
+  **cannot** take one. The shared key is for the agents an admin puts up for
+  everyone, not for everyone to hang their own agents on.
+- A template agent ignores the participation window. That window exists to cap
+  what an agent may spend of *someone else's* budget; on a shared credential
+  there is no such budget.
+
+The cost of the first rule is real and worth saying out loud: a credential
+under the server key can be read by whoever holds both the database and
+`AGORA_SECRET_KEY`. For a local model that costs nothing, that is the right
+trade. For a paid key at a provider it is not, and the dialog says so.
+
+Deleting goes in order: a shared credential with agents still on it is
+refused, with a count, rather than leaving them without a model.
+
 ### Giving one agent its own material
 
 An agent can carry documents nobody else has. Upload them under *Agents →

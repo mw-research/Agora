@@ -324,6 +324,11 @@ async function boot() {
   $("#app").hidden = false;
   $("#whoami").textContent = `${ME.name}${ME.is_admin ? " (Admin)" : ""}`;
   $("#tab-people").hidden = !ME.is_admin;
+  // Fuer alle hinterlegen darf nur ein Admin - also auch nur dort anbieten.
+  for (const kennung of ["#cred-geteilt-zeile", "#cred-geteilt-hinweis",
+                         "#agent-geteilt-zeile"]) {
+    $(kennung).hidden = !ME.is_admin;
+  }
   zeichneSchloss();
   zeichneTeilnahme();
   const laden = [loadForums(), loadAgents(), loadCredentials()];
@@ -1534,7 +1539,11 @@ function connectStream(threadId) {
 $("#new-thread-btn").addEventListener("click", async () => {
   // Nur eigene: ein fremder Agent laeuft auf dem Modell-Zugang seines
   // Besitzers. Der Server weist das ab - also gar nicht erst anbieten.
-  const agents = (await api("/api/agents")).filter((a) => a.owner_id === ME.id);
+  // Die eigenen und die Muster-Agenten: letztere laufen auf einem
+  // Gemeinschaftszugang, kosten also niemanden privat.
+  const agents = (await api("/api/agents")).filter(
+    (a) => a.owner_id === ME.id || a.geteilt,
+  );
   if (agents.length < 2) {
     alert(t("neuesThema.zuWenigAgenten"));
     return;
@@ -1659,7 +1668,9 @@ async function loadAgents() {
     card.className = "card";
     card.innerHTML = `
       <div style="flex:1">
-        <h3>${escapeHtml(agent.name)}</h3>
+        <h3>${escapeHtml(agent.name)}${
+          agent.geteilt ? ` <span class="marke">${t("agent.musterMarke")}</span>` : ""
+        }</h3>
         <p class="muted" style="margin:.1rem 0">${escapeHtml(agent.model)} &middot; T=${agent.temperature} &middot; ${agent.max_tokens} Tokens</p>
         <p class="muted" style="margin:.1rem 0">${escapeHtml(agent.role || "")}</p>
         <p class="persona">${escapeHtml(agent.persona || t("thread.ohneAngabe"))}</p>
@@ -1949,6 +1960,7 @@ function agentBearbeiten(agent) {
   $("#agent-temp").value = agent.temperature;
   $("#agent-maxtok").value = agent.max_tokens;
   $("#agent-public").checked = agent.is_public;
+  $("#agent-geteilt").checked = Boolean(agent.geteilt);
   $("#agent-error").textContent = "";
   zeichneAgentFormular();
   for (const zeichnen of ZAEHLER) zeichnen();
@@ -1960,6 +1972,7 @@ function agentFormularLeeren() {
   AGENT_BEARBEITET = null;
   $("#agent-form").reset();
   $("#agent-public").checked = true;
+  $("#agent-geteilt").checked = false;
   $("#agent-error").textContent = "";
   zeichneAgentFormular();
   for (const zeichnen of ZAEHLER) zeichnen();
@@ -1979,6 +1992,7 @@ $("#agent-form").addEventListener("submit", async (event) => {
     temperature: Number($("#agent-temp").value),
     max_tokens: Number($("#agent-maxtok").value),
     is_public: $("#agent-public").checked,
+    geteilt: $("#agent-geteilt").checked,
   };
   try {
     if (AGENT_BEARBEITET) {
@@ -2025,7 +2039,9 @@ async function loadCredentials() {
     card.className = "card";
     card.innerHTML = `
       <div>
-        <h3>${escapeHtml(credential.label)}</h3>
+        <h3>${escapeHtml(credential.label)}${
+          credential.geteilt ? ` <span class="marke">${t("zugang.fuerAlleMarke")}</span>` : ""
+        }</h3>
         <p class="muted" style="margin:.1rem 0">
           Provider <code>${escapeHtml(credential.provider)}</code>
           ${credential.api_base ? `&middot; ${escapeHtml(credential.api_base)}` : ""}
@@ -2036,14 +2052,23 @@ async function loadCredentials() {
           ${credential.has_extra ? `&middot; ${t("zugang.mitZusatz")}` : ""}
         </p>
       </div>`;
-    const remove = document.createElement("button");
-    remove.className = "danger";
-    remove.textContent = t("zugang.loeschen");
-    remove.addEventListener("click", async () => {
-      await api(`/api/credentials/${credential.id}`, { method: "DELETE" });
-      await loadCredentials();
-    });
-    card.appendChild(remove);
+    // Einen Zugang fuer alle entfernt nur ein Admin; einen fremden
+    // ueberhaupt niemand.
+    const meiner = credential.owner_id === ME.id;
+    if (credential.geteilt ? ME.is_admin : meiner) {
+      const remove = document.createElement("button");
+      remove.className = "danger";
+      remove.textContent = t("zugang.loeschen");
+      remove.addEventListener("click", async () => {
+        try {
+          await api(`/api/credentials/${credential.id}`, { method: "DELETE" });
+          await loadCredentials();
+        } catch (error) {
+          alert(error.message);
+        }
+      });
+      card.appendChild(remove);
+    }
     list.appendChild(card);
   }
 }
@@ -2069,6 +2094,7 @@ $("#cred-form").addEventListener("submit", async (event) => {
         auth_style: $("#cred-auth").value,
         header_name: $("#cred-header").value.trim() || null,
         extra_json: $("#cred-extra").value.trim() || null,
+        geteilt: $("#cred-geteilt").checked,
       }),
     });
     $("#cred-form").reset();

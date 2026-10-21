@@ -104,6 +104,9 @@ class CredentialCreate(BaseModel):
     header_name: str | None = Field(default=None, max_length=80)
     # Freie LiteLLM-Parameter als JSON-Text, z.B. {"api_version": "2024-10-21"}
     extra_json: str | None = None
+    # Ein Zugang fuer alle. Nur Admins duerfen das setzen, und er liegt dann
+    # am Serverschluessel statt an einer PIN - siehe models.Credential.
+    geteilt: bool = False
 
 
 class CredentialOut(ORMModel):
@@ -115,6 +118,10 @@ class CredentialOut(ORMModel):
     auth_style: str
     header_name: str | None
     has_extra: bool
+    geteilt: bool = False
+    # Wem er gehoert - die Oberflaeche zeigt fremde Gemeinschaftszugaenge an,
+    # laesst sie aber nicht aendern.
+    owner_id: str | None = None
 
 
 # --- Agent ------------------------------------------------------------------
@@ -131,6 +138,8 @@ class AgentCreate(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1200
     is_public: bool = True
+    # Muster-Agent fuer alle. Nur Admins duerfen das setzen.
+    geteilt: bool = False
 
 
 class AgentUpdate(BaseModel):
@@ -144,6 +153,7 @@ class AgentUpdate(BaseModel):
     temperature: float | None = None
     max_tokens: int | None = None
     is_public: bool | None = None
+    geteilt: bool | None = None
 
 
 class WissenOut(ORMModel):
@@ -163,6 +173,8 @@ class AgentOut(ORMModel):
     temperature: float
     max_tokens: int
     is_public: bool
+    # Von einem Admin fuer alle angelegt - jeder darf ihn einsetzen.
+    geteilt: bool = False
     # Nur die ANZAHL, nie die Namen und nie der Inhalt. Mitlesende sollen
     # sehen, dass jemand aus eigenem Material argumentiert - sonst wirkt der
     # Widerspruch grundlos. Was darin steht, geht sie nichts an.
