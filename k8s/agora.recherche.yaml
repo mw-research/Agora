@@ -1,0 +1,245 @@
+# Der Rechercheur - und ein SearXNG, das ihm die Suche abnimmt.
+#
+# Das Gegenstueck zu k8s/agora.rechner.yaml, und zwar spiegelverkehrt: der
+# Rechner darf alles rechnen und nirgendwohin, dieser Pod darf nirgendwohin
+# rechnen und dafuer ins Netz.
+#
+# Warum ueberhaupt getrennt: er ist der einzige Teil von Agora mit einem Weg
+# nach draussen. Er traegt deshalb nichts, was dort nuetzlich waere - keine
+# Datenbank, keine Modell-Schluessel, keine Beitraege. Er bekommt eine
+# Suchanfrage, gibt Fundstellen als Text zurueck und vergisst sie.
+#
+# Zusammengefasst wird NICHT hier, sondern im Worker mit dem Modell des
+# fragenden Agenten. Laeuft euer Forum auf einem Modell im eigenen Haus,
+# verlaesst damit kein Diskussionsinhalt das Haus - nur die Suchanfrage, und
+# die steht sichtbar im Thema.
+#
+# Einspielen:
+#
+#   kubectl -n DEIN-NAMESPACE apply -f k8s/agora.recherche.yaml
+#
+# Dann am Worker UND an der API setzen (beide bauen den Prompt bzw. legen
+# Themen an):
+#
+#   AGORA_RECHERCHE_SEARXNG=http://agora-searxng:8080
+#   AGORA_RECHERCHE_URL=http://agora-recherche:8000
+#
+# Das image: unten auf dasselbe setzen wie in k8s/agora.namespace.yaml.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agora-searxng
+data:
+  settings.yml: |
+    use_default_settings: true
+    general:
+      instance_name: "Agora"
+      # Keine Statistik, keine Fehlermeldungen nach draussen.
+      enable_metrics: false
+    search:
+      # JSON muss ausdruecklich an sein - ohne das antwortet SearXNG nur
+      # in HTML, und der Dienst kann nichts damit anfangen.
+      formats:
+        - html
+        - json
+      safe_search: 0
+    server:
+      secret_key: "BITTE-AENDERN-openssl-rand-hex-32"
+      limiter: false
+      image_proxy: false
+    ui:
+      static_use_hash: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-searxng
+spec:
+  selector:
+    app: agora-searxng
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-searxng
+  labels:
+    app: agora-searxng
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-searxng
+  template:
+    metadata:
+      labels:
+        app: agora-searxng
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+      containers:
+      - name: searxng
+        image: searxng/searxng:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: SEARXNG_BASE_URL
+          value: "http://agora-searxng:8080/"
+        volumeMounts:
+        - name: einstellungen
+          mountPath: /etc/searxng/settings.yml
+          subPath: settings.yml
+        - name: fluechtig
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 192Mi
+          limits:
+            cpu: "1"
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+      volumes:
+      - name: einstellungen
+        configMap:
+          name: agora-searxng
+      - name: fluechtig
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agora-recherche
+spec:
+  selector:
+    app: agora-recherche
+  ports:
+  - port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agora-recherche
+  labels:
+    app: agora-recherche
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agora-recherche
+  template:
+    metadata:
+      labels:
+        app: agora-recherche
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+      - name: recherche
+        image: ghcr.io/DEINE-ORG/agora:latest
+        imagePullPolicy: Always
+        args:
+        - uvicorn
+        - app.recherche_dienst:app
+        - --host=0.0.0.0
+        - --port=8000
+        # Bewusst ohne agora-geheim: dieser Pod bekommt weder Datenbank
+        # noch Modell-Schluessel. Er ist der einzige mit einem Weg nach
+        # draussen, also traegt er nichts, was dort etwas wert waere.
+        env:
+        - name: PYTHONDONTWRITEBYTECODE
+          value: "1"
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+        - name: fluechtig
+          mountPath: /tmp
+      volumes:
+      - name: fluechtig
+        emptyDir: {}
+---
+# Hereinkommen darf nur der Worker. Hinausgehen darf der Pod ins Netz - das
+# ist sein Zweck - aber ausdruecklich NICHT in das eigene Clusternetz.
+#
+# Ohne die letzte Regel waere er ein Sprungbrett: wer ihn dazu bringt, eine
+# Adresse im RFC-1918-Bereich abzurufen, liest sonst die Dienste nebenan.
+# app/recherche.py prueft das zusaetzlich selbst - die zweite Tuer, falls
+# euer CNI keine NetworkPolicies durchsetzt.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: agora-recherche-aussen
+spec:
+  podSelector:
+    matchLabels:
+      app: agora-recherche
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: agora-worker
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  # DNS, sonst findet er nichts.
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Das eigene SearXNG.
+  - to:
+    - podSelector:
+        matchLabels:
+          app: agora-searxng
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Und das offene Netz - aber nicht das eigene.
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+        - 169.254.0.0/16
+        - 127.0.0.0/8
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 80

@@ -308,6 +308,9 @@ class Thread(Base):
     naechster_agent_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Duerfen die Agenten in diesem Thema rechnen?
     werkzeuge: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
+    # Duerfen sie nachsehen, was draussen steht? Die Suchanfrage verlaesst
+    # dabei das Haus - deshalb je Thema entschieden und nicht global.
+    recherche: Mapped[bool | None] = mapped_column(Boolean, default=False, nullable=True)
     # Was fuer ein Material liegt vor - ein Antrag will anders gelesen werden
     # als ein Beweis. Siehe app/pruefarten.py.
     art: Mapped[str | None] = mapped_column(String(20), default="frei", nullable=True)

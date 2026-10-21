@@ -177,6 +177,9 @@ const TEXTE = {
       "kein Dokument \u2013 alles andere gibt den Agenten einen Pr\u00fcfauftrag " +
       "und verbietet ihnen, zuzustimmen, bevor gepr\u00fcft wurde.",
     "neuesThema.werkzeuge": "Agenten dürfen rechnen",
+    "neuesThema.recherche": "Agenten dürfen nachsehen, was draußen steht",
+    "neuesThema.rechercheHinweis":
+      "Die Agenten können eine Suchanfrage stellen; die besten Treffer werden gelesen und mit EUREM Modell zu einer belegten Antwort zusammengefasst. Achtung: die Suchanfrage verlässt das Haus. Sie steht deshalb sichtbar im Thema, bevor das Ergebnis kommt. Der Diskussionsinhalt geht an kein fremdes Modell.",
     "neuesThema.werkzeugeHinweis":
       "Die Agenten können Python-Blöcke schreiben, die ausgeführt werden – für " +
       "Zahlen, Umformungen und Gegenbeispiele. Die Ausgabe erscheint als eigener " +
@@ -553,6 +556,9 @@ const TEXTE = {
       "document \u2013 everything else gives the agents a checking brief and " +
       "forbids them to agree before they have checked.",
     "neuesThema.werkzeuge": "Agents may compute",
+    "neuesThema.recherche": "Agents may look up what is out there",
+    "neuesThema.rechercheHinweis":
+      "Agents can put a query to a search engine; the best hits are read and turned into a sourced answer by YOUR model. Note: the query leaves the house. It is therefore shown in the topic before the result arrives. No discussion content goes to any outside model.",
     "neuesThema.werkzeugeHinweis":
       "Agents can write Python blocks that get executed – for figures, " +
       "transformations and counterexamples. The output appears as a post of its " +
@@ -926,6 +932,9 @@ const TEXTE = {
       "агенты получают задание на проверку, и им запрещено " +
       "соглашаться, пока они не проверили.",
     "neuesThema.werkzeuge": "Агентам разрешено вычислять",
+    "neuesThema.recherche": "Агенты могут посмотреть, что есть снаружи",
+    "neuesThema.rechercheHinweis":
+      "Агенты могут задать запрос поисковику; лучшие результаты читаются и сводятся ВАШЕЙ моделью в ответ со ссылками. Внимание: запрос покидает дом. Поэтому он виден в теме до того, как придёт результат. Содержание обсуждения не уходит ни к какой чужой модели.",
     "neuesThema.werkzeugeHinweis": 
       "Агенты могут писать блоки на Python, которые выполняются – " +
       "для чисел, преобразований и контрпримеров. Вывод появляется " +

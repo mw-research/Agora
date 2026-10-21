@@ -122,6 +122,10 @@ fetch("/healthz")
     $("#antrag-oeffnen").hidden = d.antraege_offen === false;
     $("#werkzeuge-zeile").hidden = !d.werkzeuge;
     $("#werkzeuge-hinweis").hidden = !d.werkzeuge;
+    // Ohne eingerichtete Suche nuetzt das Haekchen nichts - dann bliebe es
+    // gesetzt und niemand verstuende, warum nichts kommt.
+    $("#recherche-zeile").hidden = !d.recherche;
+    $("#recherche-hinweis").hidden = !d.recherche;
   })
   .catch(() => {});
 
@@ -1585,6 +1589,7 @@ $("#thread-form").addEventListener("submit", async (event) => {
     stop_phrase: $("#t-stop").value.trim(),
     art: $("#t-art").value,
     werkzeuge: $("#t-werkzeuge").checked,
+    recherche: $("#t-recherche").checked,
     synthesize_on_end: $("#t-synth").checked,
     // Liegt Material bei, muss es im Verlauf stehen, BEVOR der erste Agent
     // spricht - sonst diskutiert die erste Runde ins Leere. Also angehalten

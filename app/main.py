@@ -67,7 +67,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.35.0"
+APP_VERSION = "0.36.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1896,6 +1896,9 @@ async def create_thread(
         # Auch wenn jemand es anfragt: erlaubt ist es nur, wenn der Server es
         # zulaesst.
         werkzeuge=payload.werkzeuge and get_settings().werkzeuge,
+        # Ohne eingerichtete Suche nuetzt das Haekchen nichts - dann
+        # bliebe es gesetzt und niemand verstuende, warum nichts kommt.
+        recherche=payload.recherche and bool(get_settings().recherche_searxng),
         art=payload.art,
         next_run_at=utcnow(),
     )
@@ -2637,6 +2640,8 @@ async def healthz():
         # Der Themen-Dialog blendet das Haekchen zum Rechnen danach aus.
         "werkzeuge": settings.werkzeuge,
         "werkzeug_pakete": werkzeuge.verfuegbare_pakete() if settings.werkzeuge else [],
+        # Der Themen-Dialog blendet das Haekchen zur Recherche danach aus.
+        "recherche": bool(settings.recherche_searxng),
     }
 
 

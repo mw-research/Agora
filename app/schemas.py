@@ -263,6 +263,8 @@ class ThreadCreate(BaseModel):
     start_now: bool = True
     # Nur wirksam, wenn der Server es erlaubt (AGORA_WERKZEUGE).
     werkzeuge: bool = False
+    # Nur wirksam, wenn eine Suche eingerichtet ist (AGORA_RECHERCHE_SEARXNG).
+    recherche: bool = False
 
 
 class ThreadOut(ORMModel):
@@ -281,6 +283,7 @@ class ThreadOut(ORMModel):
     stop_phrase: str
     synthesize_on_end: bool
     werkzeuge: bool = False
+    recherche: bool = False
     art: str = "frei"
     created_at: UtcDatetime
     updated_at: UtcDatetime

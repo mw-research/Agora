@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     # ist nach dem naechsten Neustart wieder das alte.
     admin_token_uebernehmen: bool = False
 
+    # --- Recherche ---
+    # Adresse eines SearXNG im eigenen Haus. Leer = die Recherche ist aus,
+    # und zwar ueberall; ohne sie laesst sich kein Thema damit anlegen.
+    #
+    # Die Suchanfrage verlaesst das Haus - sie schreibt ein Agent, der die
+    # Diskussion im Kontext hat. Sie steht deshalb sichtbar im Thread,
+    # bevor das Ergebnis kommt. Zusammengefasst wird mit dem Modell des
+    # fragenden Agenten, es geht also kein Inhalt an ein Modell, das nicht
+    # ohnehin mitliest.
+    recherche_searxng: str = ""
+    # Adresse des Recherche-Dienstes. Leer = der Worker sieht selbst nach -
+    # bequem beim Entwickeln, im Betrieb nicht gedacht, denn dann braeuchte
+    # der Worker einen Weg ins Netz. Siehe k8s/agora.recherche.yaml.
+    recherche_url: str = ""
+    recherche_treffer: int = 5
+    recherche_lesen: int = 3
+    recherche_sekunden: int = 25
+
     worker_enabled: bool = True
     worker_interval: float = 2.0
 
