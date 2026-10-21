@@ -1183,6 +1183,31 @@ async def main_test() -> int:
                     f"Sprachblock {nummer} fehlt: {sorted(alle - block)}"
             print("[ok] Art der Diskussion steuert den Auftrag der Agenten")
 
+            # --- Markdown ohne innerHTML ----------------------------------
+            # Beitraege kommen aus Modellen. Ein Renderer, der HTML als
+            # Zeichenkette baut und mit innerHTML einsetzt, braucht einen
+            # Reiniger daneben - und der ist die Stelle, an der man etwas
+            # uebersieht. Deshalb entsteht hier jeder Knoten einzeln.
+            appjs = (ROOT / "app" / "static" / "app.js").read_text(encoding="utf-8")
+            anfang = appjs.index("function inlineEinsetzen")
+            ende = appjs.index("function koerperFuellen")
+            # Kommentare heraus - in einem davon steht das Wort absichtlich.
+            renderer = "\n".join(
+                zeile for zeile in appjs[anfang:ende].split("\n")
+                if not zeile.lstrip().startswith(("//", "*", "/*"))
+            )
+            for verboten in ("innerHTML", "insertAdjacentHTML", "outerHTML"):
+                assert verboten not in renderer, \
+                    f"der Markdown-Renderer benutzt {verboten}"
+            # Nur http und https duerfen zu einem Link werden.
+            assert 'protocol !== "http:"' in appjs and 'protocol !== "https:"' in appjs, \
+                "die Protokollpruefung fuer Links fehlt"
+            # Code-Bloecke gehen NICHT durch den Markdown-Renderer.
+            koerper = appjs[appjs.index("function koerperFuellen"):]
+            assert koerper.index("block.textContent") < koerper.index("markdownEinsetzen"), \
+                "Codebloecke muessen vor dem Markdown abgezweigt werden"
+            print("[ok] Markdown entsteht ohne innerHTML, Links nur mit http(s)")
+
             # --- Grundlage beim Anlegen ------------------------------------
             # Genau die Reihenfolge, die die Oberflaeche faehrt, wenn beim
             # Anlegen Dateien mitgegeben werden: angehalten anlegen, alles

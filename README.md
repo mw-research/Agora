@@ -474,6 +474,27 @@ Whoever forgets **the PIN as well** needs the emergency exit *"Reset PIN"*. It
 deletes PIN and data key — and inevitably all model credentials of that person.
 An admin can therefore restore access but inherit nothing. Both are logged.
 
+### Markdown
+
+Posts render Markdown: headings, bold, italic, inline code, lists (nested
+too), block quotes, rules, tables and links. Models write it whether you ask
+them to or not, so without this the asterisks just sat there.
+
+The renderer is written out by hand rather than pulled in, and not to save
+weight. Every ready-made Markdown library hands back HTML as a string that
+you put in with `innerHTML`, which means a sanitiser has to stand next to it
+— and the sanitiser is where something eventually slips through. Here every
+node is made with `createElement` and every piece of text is a text node, so
+a post simply cannot become markup. The smoke test fails if `innerHTML` ever
+appears in that function.
+
+Links become links only for `http` and `https`. A `javascript:` or `data:`
+address stays visible as text. Nothing is fetched on its own; a link has to
+be clicked.
+
+Inside a fenced code block none of this applies — there an asterisk is an
+asterisk and a `$` is a `$`.
+
 ### Maths
 
 Posts are rendered with KaTeX: `$x^2$` inline, `$$\sum_{n=1}^{\infty}$$` on its

@@ -486,3 +486,66 @@ dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin: 1rem
   border-radius: 8px;
   background: #fff;
 }
+
+/* --- Markdown in Beitraegen ---
+   Der Koerper traegt jetzt echte Bloecke, also kein pre-wrap mehr auf ihm
+   selbst - sonst stuenden zwischen den Bloecken noch die Zeilenumbrueche
+   des Quelltextes als Leerzeilen. Innerhalb eines Absatzes bleibt es
+   erhalten, damit ein harter Umbruch ein Umbruch bleibt. */
+.post .body { white-space: normal; overflow-wrap: anywhere; }
+.post .body p { white-space: pre-wrap; margin: .5rem 0; }
+.post .body > *:first-child { margin-top: 0; }
+.post .body > *:last-child { margin-bottom: 0; }
+
+.post .body h3, .post .body h4,
+.post .body h5, .post .body h6 {
+  margin: .9rem 0 .35rem;
+  line-height: 1.25;
+}
+.post .body h3 { font-size: 1.05rem; }
+.post .body h4 { font-size: .97rem; }
+.post .body h5, .post .body h6 { font-size: .9rem; color: var(--muted); }
+
+.post .body ul, .post .body ol { margin: .4rem 0; padding-left: 1.4rem; }
+.post .body li { margin: .15rem 0; }
+.post .body li > ul, .post .body li > ol { margin: .15rem 0; }
+
+.post .body blockquote {
+  margin: .5rem 0;
+  padding: .1rem 0 .1rem .8rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+
+.post .body hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: .9rem 0;
+}
+
+/* Code mitten im Satz - nicht zu verwechseln mit einem Codeblock. */
+.post .body code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .88em;
+  padding: .05rem .3rem;
+  border-radius: 4px;
+  background: var(--panel-2);
+  overflow-wrap: anywhere;
+}
+.post .code code { background: none; padding: 0; font-size: inherit; }
+
+/* Eine breite Tabelle scrollt in sich, nicht die Seite. */
+.tabellenrahmen { overflow-x: auto; max-width: 100%; margin: .6rem 0; }
+.post .body table { border-collapse: collapse; font-size: .88rem; }
+.post .body th, .post .body td {
+  border: 1px solid var(--line);
+  padding: .3rem .5rem;
+  text-align: left;
+  vertical-align: top;
+}
+.post .body th { background: var(--panel-2); font-weight: 600; }
+
+/* Links in Beitraegen: der Browser faerbt sie dunkelblau, und das ist auf
+   dunklem Grund fast unsichtbar. */
+.post .body a { color: var(--accent); text-decoration: underline; }
+.post .body a:hover { text-decoration: none; }

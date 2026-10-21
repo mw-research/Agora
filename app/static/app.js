@@ -1011,6 +1011,247 @@ function matheEinsetzen(ziel, text) {
   }
 }
 
+// Reihenfolge ist Rangfolge: was frueher steht, gewinnt. Code zuerst,
+// damit `**x**` in Backticks Text bleibt; Formeln vor kursiv, damit $a*b$
+// nicht am Stern zerbricht.
+const INLINE = [
+  ["code", /`([^`\n]+)`/g],
+  ["mathe", MATHE],
+  ["link", /\[([^\]\n]+)\]\(([^)\s]+)\)/g],
+  ["fett", /\*\*([^*\n]+)\*\*|__([^_\n]+)__/g],
+  ["kursiv", /(?<![*\w])\*([^*\n]+)\*(?!\*)|(?<![_\w])_([^_\n]+)_(?![_\w])/g],
+];
+
+/** Nur http und https werden zu einem Link.
+ *
+ * Ein Modell schreibt die Adresse, also wird hier geprueft statt vertraut:
+ * javascript: und data: haben in einem href nichts zu suchen. Angeklickt
+ * wird ohnehin von Hand - abgerufen wird hier nichts von selbst.
+ */
+function mdLink(text, adresse) {
+  let ziel;
+  try {
+    ziel = new URL(adresse, window.location.origin);
+  } catch {
+    return null;
+  }
+  if (ziel.protocol !== "http:" && ziel.protocol !== "https:") return null;
+  const a = document.createElement("a");
+  a.href = ziel.href;
+  a.textContent = text;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer nofollow";
+  return a;
+}
+
+/** Text mit Auszeichnung in einen Knoten schreiben. */
+function inlineEinsetzen(ziel, text) {
+  const roh = String(text || "");
+  if (!roh) return;
+
+  // Den jeweils fruehesten Treffer aller Muster suchen und abarbeiten.
+  let rest = roh;
+  let wache = 0;
+  while (rest && wache++ < 500) {
+    let bester = null;
+    for (const [art, muster] of INLINE) {
+      muster.lastIndex = 0;
+      const treffer = muster.exec(rest);
+      if (treffer && (bester === null || treffer.index < bester.treffer.index)) {
+        bester = { art, treffer };
+      }
+    }
+    if (!bester) break;
+
+    const { art, treffer } = bester;
+    if (treffer.index > 0) {
+      ziel.appendChild(document.createTextNode(rest.slice(0, treffer.index)));
+    }
+
+    let knoten = null;
+    if (art === "code") {
+      knoten = document.createElement("code");
+      knoten.textContent = treffer[1];
+    } else if (art === "mathe") {
+      // matheEinsetzen kann es selbst, samt Rueckfall auf die Quelle.
+      matheEinsetzen(ziel, treffer[0]);
+    } else if (art === "link") {
+      knoten = mdLink(treffer[1], treffer[2]);
+      if (knoten === null) knoten = document.createTextNode(treffer[0]);
+    } else if (art === "fett") {
+      knoten = document.createElement("strong");
+      inlineEinsetzen(knoten, treffer[1] ?? treffer[2]);
+    } else if (art === "kursiv") {
+      knoten = document.createElement("em");
+      inlineEinsetzen(knoten, treffer[1] ?? treffer[2]);
+    }
+    if (knoten) ziel.appendChild(knoten);
+
+    rest = rest.slice(treffer.index + treffer[0].length);
+  }
+  if (rest) ziel.appendChild(document.createTextNode(rest));
+}
+
+// --- Markdown --------------------------------------------------------
+// Die Modelle schreiben Markdown, ob man sie darum bittet oder nicht:
+// Ueberschriften, Fettes, Listen, Tabellen. Ohne Darstellung stehen die
+// Sternchen roh im Beitrag.
+//
+// Von Hand und ohne Bibliothek, und zwar nicht aus Sparsamkeit: jeder
+// fertige Renderer liefert HTML als Zeichenkette, die man mit innerHTML
+// einsetzt, und dann braucht es einen Reiniger daneben. Hier entsteht
+// jeder Knoten mit createElement und jeder Text als Textknoten - aus einem
+// Modellbeitrag kann also gar kein Markup werden.
+
+const MD_UEBERSCHRIFT = /^ {0,3}(#{1,6})\s+(.*)$/;
+const MD_TRENNER = /^ {0,3}([-*_])(?:\s*\1){2,}\s*$/;
+const MD_ZITAT = /^ {0,3}> ?(.*)$/;
+const MD_PUNKT = /^(\s*)([-*+]|\d{1,3}[.)])\s+(.*)$/;
+const MD_TABELLENLINIE = /^\s*\|?[\s:]*-{2,}[\s:|-]*\|?\s*$/;
+
+/** Eine Tabellenzeile in Zellen zerlegen. */
+function mdZellen(zeile) {
+  let roh = zeile.trim();
+  if (roh.startsWith("|")) roh = roh.slice(1);
+  if (roh.endsWith("|")) roh = roh.slice(0, -1);
+  return roh.split("|").map((z) => z.trim());
+}
+
+/** Ein Block aus Listenpunkten - verschachtelt nach Einrueckung. */
+function mdListe(ziel, zeilen, von, tiefe) {
+  const erster = zeilen[von].match(MD_PUNKT);
+  const geordnet = /\d/.test(erster[2]);
+  const liste = document.createElement(geordnet ? "ol" : "ul");
+  let i = von;
+  while (i < zeilen.length) {
+    const treffer = zeilen[i].match(MD_PUNKT);
+    if (!treffer) break;
+    const eigene = treffer[1].length;
+    if (eigene < tiefe) break;
+    if (eigene > tiefe) {
+      // Tiefer eingerueckt: gehoert unter den letzten Punkt.
+      const eltern = liste.lastElementChild || liste.appendChild(document.createElement("li"));
+      i = mdListe(eltern, zeilen, i, eigene);
+      continue;
+    }
+    const punkt = document.createElement("li");
+    inlineEinsetzen(punkt, treffer[3]);
+    liste.appendChild(punkt);
+    i += 1;
+  }
+  ziel.appendChild(liste);
+  return i;
+}
+
+/** Markdown-Bloecke in echte Knoten uebersetzen. */
+function markdownEinsetzen(ziel, text) {
+  const zeilen = String(text).replace(/\r/g, "").split("\n");
+  let i = 0;
+
+  const absatz = [];
+  const absatzSchliessen = () => {
+    if (!absatz.length) return;
+    const p = document.createElement("p");
+    inlineEinsetzen(p, absatz.join("\n"));
+    ziel.appendChild(p);
+    absatz.length = 0;
+  };
+
+  while (i < zeilen.length) {
+    const zeile = zeilen[i];
+
+    if (!zeile.trim()) {
+      absatzSchliessen();
+      i += 1;
+      continue;
+    }
+
+    const trenner = zeile.match(MD_TRENNER);
+    if (trenner) {
+      absatzSchliessen();
+      ziel.appendChild(document.createElement("hr"));
+      i += 1;
+      continue;
+    }
+
+    const ueberschrift = zeile.match(MD_UEBERSCHRIFT);
+    if (ueberschrift) {
+      absatzSchliessen();
+      // Ab h3: h1 und h2 gehoeren der Seite, nicht einem Beitrag darin.
+      const stufe = Math.min(6, 2 + ueberschrift[1].length);
+      const kopf = document.createElement(`h${stufe}`);
+      inlineEinsetzen(kopf, ueberschrift[2].replace(/\s*#+\s*$/, ""));
+      ziel.appendChild(kopf);
+      i += 1;
+      continue;
+    }
+
+    if (MD_ZITAT.test(zeile)) {
+      absatzSchliessen();
+      const drin = [];
+      while (i < zeilen.length && MD_ZITAT.test(zeilen[i])) {
+        drin.push(zeilen[i].match(MD_ZITAT)[1]);
+        i += 1;
+      }
+      const zitat = document.createElement("blockquote");
+      markdownEinsetzen(zitat, drin.join("\n"));
+      ziel.appendChild(zitat);
+      continue;
+    }
+
+    // Tabelle: eine Zeile mit Strichen, darunter die Trennlinie.
+    if (
+      zeile.includes("|") &&
+      i + 1 < zeilen.length &&
+      MD_TABELLENLINIE.test(zeilen[i + 1]) &&
+      zeilen[i + 1].includes("-")
+    ) {
+      absatzSchliessen();
+      const tabelle = document.createElement("table");
+      const kopf = document.createElement("thead");
+      const kopfzeile = document.createElement("tr");
+      for (const zelle of mdZellen(zeile)) {
+        const th = document.createElement("th");
+        inlineEinsetzen(th, zelle);
+        kopfzeile.appendChild(th);
+      }
+      kopf.appendChild(kopfzeile);
+      tabelle.appendChild(kopf);
+
+      const rumpf = document.createElement("tbody");
+      i += 2;
+      while (i < zeilen.length && zeilen[i].includes("|") && zeilen[i].trim()) {
+        const tr = document.createElement("tr");
+        for (const zelle of mdZellen(zeilen[i])) {
+          const td = document.createElement("td");
+          inlineEinsetzen(td, zelle);
+          tr.appendChild(td);
+        }
+        rumpf.appendChild(tr);
+        i += 1;
+      }
+      tabelle.appendChild(rumpf);
+      // In einen eigenen Rahmen: eine breite Tabelle soll in sich scrollen
+      // und nicht die ganze Seite dehnen.
+      const rahmen = document.createElement("div");
+      rahmen.className = "tabellenrahmen";
+      rahmen.appendChild(tabelle);
+      ziel.appendChild(rahmen);
+      continue;
+    }
+
+    if (MD_PUNKT.test(zeile)) {
+      absatzSchliessen();
+      i = mdListe(ziel, zeilen, i, zeile.match(MD_PUNKT)[1].length);
+      continue;
+    }
+
+    absatz.push(zeile);
+    i += 1;
+  }
+  absatzSchliessen();
+}
+
 function koerperFuellen(el, text) {
   el.textContent = "";
   const teile = String(text || "").split("```");
@@ -1024,9 +1265,10 @@ function koerperFuellen(el, text) {
       if (istSprache) block.dataset.sprache = kopf;
       block.textContent = (istSprache ? zeilen.slice(1).join("\n") : teil).replace(/\n$/, "");
       el.appendChild(block);
-    } else if (teil) {
-      // Nur ausserhalb der Code-Bloecke setzen: in Quelltext ist ein $ ein $.
-      matheEinsetzen(el, teil);
+    } else if (teil.trim()) {
+      // Nur ausserhalb der Code-Bloecke: in Quelltext ist ein $ ein $ und
+      // ein * ein *.
+      markdownEinsetzen(el, teil);
     }
   });
 }
