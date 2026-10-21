@@ -113,7 +113,16 @@ async def stream(
 ) -> AsyncIterator[tuple[str, str, dict | None]]:
     """Liefert Tupel (kind, payload, usage).
 
-    kind ist "delta" waehrend der Generierung und "usage" als letztes Element.
+    kind ist "delta" waehrend der Generierung, "denken" fuer Denk-Token und
+    "usage" als letztes Element.
+
+    Warum "denken" eine eigene Art ist: Modelle mit Reasoning - Qwen3 auf
+    vLLM etwa - schicken ihre Ueberlegung als reasoning_content und erst
+    danach den eigentlichen Text als content. Wer nur content liest, sieht
+    bei einem knappen max_tokens gar nichts und legt einen leeren Beitrag
+    ab. Das Denken gehoert nicht in die Diskussion, aber der Worker muss
+    wissen, dass es stattfand - sonst kann er den leeren Beitrag nicht
+    erklaeren.
     """
     kwargs = _call_kwargs(agent, dk)
     try:
@@ -131,9 +140,19 @@ async def stream(
             if not choices:
                 continue
             delta = getattr(choices[0], "delta", None)
-            text = getattr(delta, "content", None) if delta is not None else None
+            if delta is None:
+                continue
+            text = getattr(delta, "content", None)
             if text:
                 yield "delta", text, None
+                continue
+            # Kein Inhalt - aber vielleicht Denken. LiteLLM reicht es je nach
+            # Anbieter als reasoning_content oder im Feld thinking durch.
+            gedacht = getattr(delta, "reasoning_content", None) or getattr(
+                delta, "thinking", None
+            )
+            if gedacht:
+                yield "denken", gedacht, None
     except Exception as exc:
         raise LLMError(f"Stream abgebrochen - {type(exc).__name__}: {exc}") from exc
 

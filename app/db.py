@@ -64,6 +64,34 @@ def _vorgabe_sql(spalte, dialect) -> str | None:
     return str(arg.compile(dialect=dialect))
 
 
+def _nachfuellen(connection, tabelle: str, spalte) -> None:
+    """Bestandszeilen auf den Vorgabewert setzen.
+
+    Der eigentliche Fehler, der im Betrieb aufschlug: ADD COLUMN ohne
+    DEFAULT laesst in jeder Zeile von vorher NULL stehen. Das
+    Python-seitige default=False greift nur beim INSERT, nicht
+    rueckwirkend - also traegt eine bestehende Datenbank nach dem Update
+    halb NULL und halb false. Die Antwortmodelle deuten NULL inzwischen um
+    (siehe JaNein in app/schemas.py), aber das ist das Pflaster; hier ist
+    die Wunde.
+
+    Nur bei einem Vorgabewert, den man als Literal schreiben kann. Eine
+    Funktion wie utcnow gehoert nicht rueckwirkend eingesetzt: ein altes
+    Thema hat kein Erstellungsdatum von heute.
+    """
+    vorgabe = getattr(spalte.default, "arg", None) if spalte.default is not None else None
+    if vorgabe is None or callable(vorgabe):
+        return
+    if not isinstance(vorgabe, (bool, int, float, str)):
+        return
+    connection.execute(
+        text(f"UPDATE {tabelle} SET {spalte.name} = :wert WHERE {spalte.name} IS NULL"),
+        {"wert": vorgabe},
+    )
+    log.info("Datenbank: %s.%s auf %r gesetzt, wo NULL stand",
+             tabelle, spalte.name, vorgabe)
+
+
 def _add_missing_columns(connection) -> None:
     """Fehlende Spalten nachziehen.
 
@@ -91,6 +119,7 @@ def _add_missing_columns(connection) -> None:
                 sql += f" DEFAULT {vorgabe}"
             log.info("Datenbank: ergaenze %s.%s", tabelle.name, spalte.name)
             connection.execute(text(sql))
+            _nachfuellen(connection, tabelle.name, spalte)
 
 
 # Irgendeine feste Zahl - sie muss nur in allen Pods dieselbe sein.

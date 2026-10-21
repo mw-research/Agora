@@ -68,7 +68,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.38.0"
+APP_VERSION = "0.39.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.

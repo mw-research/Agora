@@ -49,8 +49,49 @@ CREATE TABLE users (
     is_admin BOOLEAN,
     created_at DATETIME
 );
+CREATE TABLE threads (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    goal TEXT,
+    creator_id VARCHAR(32) NOT NULL,
+    forum_id VARCHAR(32),
+    status VARCHAR(20),
+    status_detail TEXT,
+    mode VARCHAR(20),
+    moderator_agent_id VARCHAR(32),
+    max_rounds INTEGER,
+    rounds_done INTEGER,
+    pace_seconds INTEGER,
+    stop_phrase VARCHAR(60),
+    synthesize_on_end BOOLEAN,
+    next_run_at DATETIME,
+    locked_until DATETIME,
+    locked_by VARCHAR(64),
+    last_agent_id VARCHAR(32),
+    created_at DATETIME,
+    updated_at DATETIME
+);
+CREATE TABLE agents (
+    id VARCHAR(32) NOT NULL PRIMARY KEY,
+    owner_id VARCHAR(32) NOT NULL,
+    name VARCHAR(80) NOT NULL,
+    role VARCHAR(200),
+    persona TEXT,
+    model VARCHAR(160) NOT NULL,
+    credential_id VARCHAR(32),
+    temperature FLOAT,
+    max_tokens INTEGER,
+    is_public BOOLEAN,
+    created_at DATETIME
+);
 INSERT INTO forums VALUES ('f1', 'Bestandsforum', '', NULL, 0, 'u1', '2026-01-01 00:00:00');
-INSERT INTO users  VALUES ('u1', 'altgedient', 'x', 0, '2026-01-01 00:00:00');
+INSERT INTO users  VALUES ('u1', 'altgedient', 'x', 1, '2026-01-01 00:00:00');
+INSERT INTO threads VALUES ('t1', 'Bestandsthema', 'Soll sichtbar bleiben', 'u1', 'f1',
+    'paused', '', 'roundrobin', NULL, 12, 3, 5, 'EINVERSTANDEN', 1,
+    '2026-01-01 00:00:00', NULL, NULL, NULL,
+    '2026-01-01 00:00:00', '2026-01-01 00:00:00');
+INSERT INTO agents VALUES ('a1', 'u1', 'Altgedienter', 'prueft', 'Du pruefst.',
+    'openai/x', NULL, 0.7, 1200, 1, '2026-01-01 00:00:00');
 """
 
 
@@ -104,6 +145,109 @@ async def main_test() -> int:
     await init_db()
     await engine.dispose()
     print("[ok] Ein zweiter Durchlauf aendert nichts und faellt nicht um")
+
+    # --- Haelt das Schema auch ohne das Nachfuellen? -------------------
+    # Das Nachfuellen unten raeumt die NULLs weg, bevor ein Modell sie
+    # sieht. Das ist die Reparatur an der Wunde - hier wird das Pflaster
+    # geprueft: kommt doch einmal NULL durch, darf daraus kein 500 werden.
+    from app import schemas as _s
+
+    class _NurNull:
+        """Nur-NULL-Attrappe: eine Zeile, wie sie ein ALTER TABLE hinterlaesst."""
+
+        id = "t" * 32
+        title = "Alt"
+        goal = ""
+        creator_id = "u" * 32
+        forum_id = None
+        status = "paused"
+        status_detail = ""
+        mode = "roundrobin"
+        moderator_agent_id = None
+        max_rounds = 12
+        rounds_done = 3
+        pace_seconds = 5
+        stop_phrase = "EINVERSTANDEN"
+        synthesize_on_end = True
+        created_at = __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        )
+        updated_at = created_at
+        # Und genau die Felder, die im Betrieb NULL trugen:
+        werkzeuge = None
+        recherche = None
+        art = None
+
+    thema = _s.ThreadOut.model_validate(_NurNull())
+    assert thema.werkzeuge is False and thema.recherche is False, thema
+    assert thema.art == "frei", thema.art
+
+    class _NurNullAgent:
+        id = "a" * 32
+        owner_id = "u" * 32
+        name = "Alt"
+        role = ""
+        persona = ""
+        model = "openai/x"
+        credential_id = None
+        temperature = 0.7
+        max_tokens = 1200
+        is_public = True
+        geteilt = None
+
+    agent = _s.AgentOut.model_validate(_NurNullAgent())
+    assert agent.geteilt is False, agent
+    print("[ok] Die Modelle lesen NULL als Vorgabewert, nicht als Fehler")
+
+    # --- Und jetzt der Punkt, der im Betrieb gefehlt hat ---------------
+    # Spalten anlegen genuegt nicht: die API muss eine Bestandszeile auch
+    # ausliefern koennen. Genau daran ist 0.37.0 gescheitert - ADD COLUMN
+    # ohne DEFAULT liess NULL stehen, und die Antwortmodelle verlangten
+    # true/false. Jedes Bestandsthema gab einen 500, und das Forum sah
+    # leer aus, obwohl alles dalag.
+    import httpx
+
+    from app import main
+
+    transport = httpx.ASGITransport(app=main.app)
+    async with main.app.router.lifespan_context(main.app):
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as c:
+            K = {"Authorization": f"Bearer {os.environ['AGORA_ADMIN_TOKEN']}"}
+            for weg, was in (("/api/threads", "Themen"),
+                             ("/api/agents", "Agenten"),
+                             ("/api/forums", "Foren"),
+                             ("/api/ungelesen", "Ungelesenes")):
+                r = await c.get(weg, headers=K)
+                assert r.status_code == 200, f"{was}: {r.status_code} {r.text[:200]}"
+
+            themen = (await c.get("/api/threads", headers=K)).json()
+            assert any(t["title"] == "Bestandsthema" for t in themen), themen
+            alt = next(t for t in themen if t["title"] == "Bestandsthema")
+            # Die nachgezogenen Felder muessen als false ankommen, nicht als
+            # null und erst recht nicht als Fehler.
+            assert alt["werkzeuge"] is False, alt
+            assert alt["recherche"] is False, alt
+            assert alt["art"] == "frei", alt
+            print("[ok] Das Bestandsthema kommt durch die API - ohne 500")
+
+            agenten = (await c.get("/api/agents", headers=K)).json()
+            alter = next(a for a in agenten if a["name"] == "Altgedienter")
+            assert alter["geteilt"] is False, alter
+            assert alter["is_public"] is True, alter
+            print("[ok] Der Bestandsagent ebenso")
+
+            # Und die Datenbank steht danach auch nicht halb auf NULL.
+            import sqlite3 as _s
+            roh = _s.connect(DATEI)
+            offen = roh.execute(
+                "select count(*) from threads where recherche is null"
+            ).fetchone()[0]
+            offen += roh.execute(
+                "select count(*) from agents where geteilt is null"
+            ).fetchone()[0]
+            roh.close()
+            assert offen == 0, f"{offen} Zeilen stehen noch auf NULL"
+            print("[ok] Keine Zeile bleibt auf NULL stehen")
 
     print("\nALLE TESTS BESTANDEN")
     return 0

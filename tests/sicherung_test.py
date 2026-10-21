@@ -169,7 +169,14 @@ async def main_test() -> int:
                              data={"passwort": ABBILD_PW})
             assert r.status_code == 200, r.text
             assert r.json()["verschluesselt"] is True, r.json()
-            assert r.json()["zaehler"] == kopf["zaehler"], r.json()
+            # Nicht gegen den Kopf des ERSTEN Abbilds vergleichen: dazwischen
+            # laeuft der Worker weiter und schreibt Beitraege. Verglichen
+            # wird, worum es hier geht - dass dasselbe Abbild mit Passwort
+            # denselben Inhalt meldet wie ohne.
+            mit_passwort = r.json()["zaehler"]
+            assert set(mit_passwort) == set(kopf["zaehler"]), mit_passwort
+            assert mit_passwort["users"] == kopf["zaehler"]["users"], mit_passwort
+            assert mit_passwort["posts"] >= 1, mit_passwort
             # Und einspielen geht ohne Passwort auch dann nicht.
             r = await c.post("/api/admin/sicherung/einspielen", headers=HEAD, files=dat,
                              data={"bestaetigt": "true"})

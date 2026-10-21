@@ -591,6 +591,34 @@ at which a model could make a browser fetch something. `AGORA_WERKZEUG_BILDER`
 caps how many come back per run (3), `AGORA_WERKZEUG_BILD_KB` how large one
 may be (400 KB).
 
+### When an agent does not answer
+
+A turn can fail: the endpoint times out, the connection drops, the model
+returns nothing. That is one turn, not the end of the discussion. The failed
+turn is recorded as a post with the reason in it, **the round is not counted**
+— a turn that contributed nothing should not spend budget — and the next
+speaker goes ahead. Only after three failures in a row does the topic pause,
+saying so in its status.
+
+A post left mid-stream, because the worker disappeared with it (pod restart,
+expired lease), is cleaned up by whoever picks the topic up next. Before, it
+sat there with a blinking cursor forever.
+
+**Models with reasoning need watching.** Qwen3 on vLLM and others send their
+thinking as `reasoning_content` and the actual answer as `content` afterwards.
+If `max_tokens` runs out during the thinking, no answer ever arrives. Agora
+notices and says so instead of leaving an empty post — including the remedy:
+put this in the credential's extra parameters to switch thinking off,
+
+```json
+{"chat_template_kwargs": {"enable_thinking": false}}
+```
+
+or raise the agent's *Max. Tokens* so there is room for both. A whole-request
+timeout is `AGORA_REQUEST_TIMEOUT` (180 seconds by default); for a local model
+answering several agents at once, that can be too short, because the requests
+queue.
+
 ### What the kind of discussion does
 
 Opening a topic asks you to pick its kind: free discussion, check a proof,

@@ -106,7 +106,57 @@ async def _claim_thread(session: AsyncSession) -> Thread | None:
     thread.locked_until = now + timedelta(seconds=LEASE_SECONDS)
     thread.locked_by = f"{uuid4().hex[:12]}@{WORKER_ID}"[:64]
     await session.commit()
+    await _haengende_aufraeumen(session, thread.id)
     return thread
+
+
+async def _haengende_aufraeumen(session: AsyncSession, thread_id: str) -> None:
+    """Beitraege beenden, die niemand mehr beendet.
+
+    Ein Beitrag entsteht mit status 'streaming' und wird am Ende des Zuges
+    auf 'complete' gesetzt. Verschwindet der Worker dazwischen - Pod weg,
+    Lease abgelaufen, Verbindung zum Modell abgerissen -, bleibt er fuer
+    immer stehen, mit blinkendem Cursor und ohne Text. Genau das stand im
+    Betrieb minutenlang auf dem Schirm.
+
+    Wer den Thread uebernimmt, weiss: der vorige Zug ist vorbei. Also kann
+    er aufraeumen. Ein gerade laufender Zug ist nicht betroffen, denn
+    solange er laeuft, ist die Lease gueltig und der Thread nicht zu
+    uebernehmen.
+    """
+    haengend = (
+        (
+            await session.execute(
+                select(Post).where(
+                    Post.thread_id == thread_id, Post.status == "streaming"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for post in haengend:
+        post.status = "error"
+        if not (post.content or "").strip():
+            post.content = (
+                "_Der Zug wurde unterbrochen und nie zu Ende gefuehrt._"
+            )
+        log.warning(
+            "Thread %s: haengenden Beitrag von %s aufgeraeumt",
+            thread_id, post.author_name,
+        )
+    if haengend:
+        await session.commit()
+        for post in haengend:
+            await bus.publish(
+                {
+                    "type": "post.done",
+                    "thread_id": thread_id,
+                    "post_id": post.id,
+                    "status": "error",
+                    "content": post.content,
+                }
+            )
 
 
 async def _anspruch_geltend(
@@ -295,6 +345,7 @@ async def run_turn(
 
     chunks: list[str] = []
     buffer: list[str] = []
+    gedacht = 0
     last_flush = time.monotonic()
     usage: dict | None = None
 
@@ -314,6 +365,12 @@ async def run_turn(
             if kind == "usage":
                 usage = chunk_usage
                 continue
+            if kind == "denken":
+                # Das Denken gehoert nicht in die Diskussion - aber wir
+                # merken uns, dass es stattfand, um einen leeren Beitrag
+                # erklaeren zu koennen.
+                gedacht += len(text)
+                continue
             chunks.append(text)
             buffer.append(text)
             long_enough = sum(len(part) for part in buffer) >= DELTA_FLUSH_CHARS
@@ -322,27 +379,36 @@ async def run_turn(
                 await flush()
         await flush()
     except llm.LLMError as exc:
-        post.content = "".join(chunks)
-        post.status = "error"
-        await session.commit()
-        await bus.publish(
-            {
-                "type": "post.done",
-                "thread_id": thread.id,
-                "post_id": post.id,
-                "status": "error",
-                "content": post.content,
-            }
-        )
-        await _fail_thread(
+        await _misslungen(
             session,
-            thread.id,
-            f"Modellaufruf von '{speaker.name}' fehlgeschlagen: {exc}",
+            thread,
+            speaker,
+            post,
+            "".join(chunks),
+            f"Modellaufruf fehlgeschlagen: {exc}",
             anspruch,
         )
         return
 
     post.content = "".join(chunks).strip()
+
+    if not post.content:
+        # Ein Name ohne Text ist kein Beitrag. Haeufigster Grund: ein Modell
+        # mit Reasoning hat sein ganzes Token-Budget verdacht und kam nie
+        # zum Antworten.
+        if gedacht:
+            grund = (
+                f"Das Modell hat {gedacht} Zeichen gedacht, aber nichts "
+                "geantwortet - vermutlich ist max_tokens zu klein, oder das "
+                "Reasoning gehoert abgeschaltet (bei vLLM ueber die "
+                'Zusatzparameter: {"chat_template_kwargs": '
+                '{"enable_thinking": false}}).'
+            )
+        else:
+            grund = "Das Modell hat nichts geantwortet."
+        await _misslungen(session, thread, speaker, post, "", grund, anspruch)
+        return
+
     post.status = "complete"
     post.usage = usage
     thread.rounds_done += 1
@@ -389,6 +455,86 @@ async def run_turn(
         thread.id,
         anspruch,
         next_run_at=utcnow() + timedelta(seconds=max(0, thread.pace_seconds)),
+    )
+    await session.refresh(thread)
+    await publish_thread(thread)
+
+
+# So oft darf es hintereinander misslingen, bevor der Thread anhaelt. Ein
+# Aussetzer ist normal - ein dauerhaft kaputter Zugang soll nicht in einer
+# Schleife Geld kosten.
+MISSLUNGEN_GRENZE = 3
+
+
+async def _misslungen(
+    session: AsyncSession,
+    thread: Thread,
+    speaker: Agent,
+    post: Post,
+    bisher: str,
+    grund: str,
+    anspruch: str | None,
+) -> None:
+    """Einen misslungenen Zug vermerken - und weitermachen.
+
+    Frueher setzte ein Fehlschlag den ganzen Thread auf 'error'. Eine
+    einzige Zeitueberschreitung beendete damit eine Diskussion, und es ging
+    erst weiter, wenn ein Mensch etwas schrieb. Das ist falsch herum: ein
+    Aussetzer gehoert vermerkt, nicht zum Abbruch erhoben.
+
+    Die Runde wird NICHT gezaehlt. Ein Zug, der nichts beigetragen hat,
+    darf kein Budget verbrauchen.
+    """
+    post.content = (bisher or "").strip()
+    post.status = "error"
+    # Der Grund gehoert sichtbar in den Beitrag: Post hat kein eigenes
+    # Detailfeld, und im Thread-Status stuende er nur beim Anhalten.
+    if not post.content:
+        post.content = f"_{grund}_"
+    await session.commit()
+    await bus.publish(
+        {
+            "type": "post.done",
+            "thread_id": thread.id,
+            "post_id": post.id,
+            "status": "error",
+            "content": post.content,
+        }
+    )
+    log.warning("Thread %s: Zug von %s misslungen - %s", thread.id, speaker.name, grund)
+
+    # Wie oft hintereinander ging es schon schief? Aus den Beitraegen
+    # gelesen, damit es dafuer keine eigene Spalte braucht.
+    letzte = await recent_posts(session, thread.id, 2 * MISSLUNGEN_GRENZE)
+    hintereinander = 0
+    for frueher in reversed(letzte):
+        if frueher.author_type != "agent":
+            continue
+        if frueher.status == "error":
+            hintereinander += 1
+        else:
+            break
+
+    if hintereinander >= MISSLUNGEN_GRENZE:
+        await _finish_thread(
+            session,
+            thread,
+            "paused",
+            f"{hintereinander} Zuege hintereinander misslungen. Zuletzt: {grund}",
+            anspruch,
+        )
+        return
+
+    # Weiter - aber nicht mit demselben, sonst haengt es an ihm fest.
+    thread.naechster_agent_id = None
+    thread.last_agent_id = speaker.id
+    thread.updated_at = utcnow()
+    await session.commit()
+    await _anspruch_geltend(
+        session,
+        thread.id,
+        anspruch,
+        next_run_at=utcnow() + timedelta(seconds=max(1, thread.pace_seconds)),
     )
     await session.refresh(thread)
     await publish_thread(thread)

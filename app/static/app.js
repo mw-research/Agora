@@ -128,7 +128,7 @@ function verstecke(kennung, verborgen) {
 
 // Die Fassung, zu der dieses Skript gehoert. Stimmt sie nicht mit der des
 // Servers ueberein, liegt hier etwas Altes im Zwischenspeicher.
-const OBERFLAECHE_VERSION = "0.38.0";
+const OBERFLAECHE_VERSION = "0.39.0";
 
 /** Sagen, dass die Seite veraltet ist - und wie man das behebt.
  *

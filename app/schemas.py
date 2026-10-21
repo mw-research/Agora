@@ -3,11 +3,38 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, PlainSerializer
 
 from .models import to_utc_iso
 
 UtcDatetime = Annotated[datetime, PlainSerializer(to_utc_iso, return_type=str)]
+
+
+def _statt_null(ersatz: object) -> BeforeValidator:
+    """NULL aus der Datenbank wie einen Vorgabewert lesen.
+
+    Eine nachgezogene Spalte entsteht mit ALTER TABLE ohne DEFAULT - jede
+    Zeile von vorher traegt dort NULL. Das Python-seitige default= greift
+    nur beim INSERT, nicht rueckwirkend. Ein Ausgabefeld, das kein None
+    vertraegt, antwortet dann mit 500, und zwar auf JEDE Bestandszeile.
+    Genau das ist im Betrieb passiert: nach dem Update sahen Foren leer
+    aus, obwohl alle Daten dalagen.
+
+    Jedes Feld, das auf einer nullable Spalte sitzt, bekommt deshalb hier
+    eine Umdeutung. tests/laengen_test.py besteht darauf.
+    """
+
+    def umdeuten(wert: object) -> object:
+        return ersatz if wert is None else wert
+
+    return BeforeValidator(umdeuten)
+
+
+# Fuer Felder auf nullable Spalten - der Wert dahinter ist der, den eine
+# Bestandszeile bekommt.
+JaNein = Annotated[bool, _statt_null(False)]
+ArtOderFrei = Annotated[str, _statt_null("frei")]
+StundenOderNull = Annotated[int, _statt_null(0)]
 
 
 class ORMModel(BaseModel):
@@ -50,7 +77,7 @@ class UserOut(ORMModel):
     has_pin: bool = False
     # Bis wann die Modell-Zugaenge lesbar sind; None = gesperrt.
     unlocked_until: UtcDatetime | None = None
-    teilnahme_stunden: int = 24
+    teilnahme_stunden: StundenOderNull = 24
 
 
 class MeUpdate(BaseModel):
@@ -106,7 +133,7 @@ class CredentialCreate(BaseModel):
     extra_json: str | None = None
     # Ein Zugang fuer alle. Nur Admins duerfen das setzen, und er liegt dann
     # am Serverschluessel statt an einer PIN - siehe models.Credential.
-    geteilt: bool = False
+    geteilt: JaNein = False
 
 
 class CredentialOut(ORMModel):
@@ -118,7 +145,7 @@ class CredentialOut(ORMModel):
     auth_style: str
     header_name: str | None
     has_extra: bool
-    geteilt: bool = False
+    geteilt: JaNein = False
     # Wem er gehoert - die Oberflaeche zeigt fremde Gemeinschaftszugaenge an,
     # laesst sie aber nicht aendern.
     owner_id: str | None = None
@@ -139,7 +166,7 @@ class AgentCreate(BaseModel):
     max_tokens: int = 1200
     is_public: bool = True
     # Muster-Agent fuer alle. Nur Admins duerfen das setzen.
-    geteilt: bool = False
+    geteilt: JaNein = False
 
 
 class AgentUpdate(BaseModel):
@@ -186,7 +213,7 @@ class AgentOut(ORMModel):
     max_tokens: int
     is_public: bool
     # Von einem Admin fuer alle angelegt - jeder darf ihn einsetzen.
-    geteilt: bool = False
+    geteilt: JaNein = False
     # Nur die ANZAHL, nie die Namen und nie der Inhalt. Mitlesende sollen
     # sehen, dass jemand aus eigenem Material argumentiert - sonst wirkt der
     # Widerspruch grundlos. Was darin steht, geht sie nichts an.
@@ -274,9 +301,9 @@ class ThreadCreate(BaseModel):
     synthesize_on_end: bool = True
     start_now: bool = True
     # Nur wirksam, wenn der Server es erlaubt (AGORA_WERKZEUGE).
-    werkzeuge: bool = False
+    werkzeuge: JaNein = False
     # Nur wirksam, wenn eine Suche eingerichtet ist (AGORA_RECHERCHE_SEARXNG).
-    recherche: bool = False
+    recherche: JaNein = False
 
 
 class ThreadOut(ORMModel):
@@ -294,9 +321,9 @@ class ThreadOut(ORMModel):
     pace_seconds: int
     stop_phrase: str
     synthesize_on_end: bool
-    werkzeuge: bool = False
-    recherche: bool = False
-    art: str = "frei"
+    werkzeuge: JaNein = False
+    recherche: JaNein = False
+    art: ArtOderFrei = "frei"
     created_at: UtcDatetime
     updated_at: UtcDatetime
 
