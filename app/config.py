@@ -13,9 +13,26 @@ class Settings(BaseSettings):
     # Wie viel eigenes Material ein Agent hoechstens tragen darf, in Zeichen
     # ueber alle seine Unterlagen zusammen. Das liegt in JEDEM seiner
     # Aufrufe - wie die Persona -, die Kosten wachsen also mit jeder Runde.
-    # 12000 Zeichen sind grob 3500 Token; bei fuenfzig eigenen Zuegen in
-    # einer langen Diskussion also etwa 175000 zusaetzliche Eingabe-Token.
-    wissen_zeichen: int = 12_000
+    #
+    # Stand frueher auf 12000 und war damit zu knapp fuer den Zweck: ein
+    # einzelnes Dokument darf nach dokumente.MAX_ZEICHEN 40000 Zeichen haben,
+    # eine Handakte fasste also nicht einmal eines davon. Drei, vier Seiten
+    # PDF sind schnell 10000 Zeichen.
+    #
+    # 60000 Zeichen sind grob 17000 Token je Aufruf. Das ist viel Geld, wenn
+    # man es ausschoepft - deshalb zeigt der Dialog den Umfang und die
+    # geschaetzten Token je Runde an, statt es zu verschweigen.
+    wissen_zeichen: int = 60_000
+
+    # Notschluessel. Normalerweise legt AGORA_ADMIN_TOKEN das Admin-Konto
+    # EINMAL an und wird danach nie wieder angefasst. Wer sich ausgesperrt
+    # hat, setzt das hier auf true, startet einmal neu - dann uebernimmt der
+    # Start das Token aus der Umgebung - und setzt es wieder auf false.
+    #
+    # Dauerhaft auf true ist gefaehrlich: dann holt sich jeder Neustart das
+    # Token aus der Umgebung zurueck, und ein zurueckgesetztes Admin-Token
+    # ist nach dem naechsten Neustart wieder das alte.
+    admin_token_uebernehmen: bool = False
 
     worker_enabled: bool = True
     worker_interval: float = 2.0

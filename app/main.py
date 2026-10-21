@@ -67,7 +67,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.32.3"
+APP_VERSION = "0.33.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -174,6 +174,20 @@ async def fehler_uebersetzen(request: Request, exc: HTTPException):
 
 
 async def _bootstrap_admin() -> None:
+    """Das Installationskonto anlegen - aber nur, wenn es fehlt.
+
+    Hier stand einmal: weicht das gespeicherte Token vom Token aus der
+    Umgebung ab, dann nimm das aus der Umgebung. Das machte jeden Neustart
+    zu einer Ruecksetzung. Wer das Token des Admin-Kontos erneuerte, hatte
+    es bis zum naechsten Neustart - danach galt wieder das allererste, und
+    wer das nicht mehr hatte, kam nicht mehr hinein. Zugleich kam jeder
+    wieder hinein, der das alte Token je gesehen hatte.
+
+    AGORA_ADMIN_TOKEN legt das Konto also genau einmal an. Danach gehoert
+    das Token der Person, nicht der Umgebung. Fuer den Notfall gibt es
+    AGORA_ADMIN_TOKEN_UEBERNEHMEN - einmal setzen, neu starten, wieder
+    wegnehmen.
+    """
     settings = get_settings()
     if not settings.admin_token:
         log.warning("AGORA_ADMIN_TOKEN ist leer - es wird kein Admin angelegt.")
@@ -185,10 +199,23 @@ async def _bootstrap_admin() -> None:
         token_hash = hash_token(settings.admin_token)
         if existing is None:
             session.add(User(name="admin", token_hash=token_hash, is_admin=True))
-            log.info("Admin-User angelegt.")
-        elif existing.token_hash != token_hash:
+            log.info("Admin-Konto angelegt.")
+        elif existing.token_hash == token_hash:
+            pass
+        elif settings.admin_token_uebernehmen:
             existing.token_hash = token_hash
-            log.info("Admin-Token aus der Umgebung uebernommen.")
+            log.warning(
+                "AGORA_ADMIN_TOKEN_UEBERNEHMEN ist gesetzt: das Token des "
+                "Admin-Kontos wurde auf den Wert aus der Umgebung "
+                "zurueckgesetzt. Nimm die Einstellung wieder weg, sonst "
+                "passiert das bei JEDEM Neustart."
+            )
+        else:
+            log.info(
+                "Das Admin-Konto hat ein eigenes Token; AGORA_ADMIN_TOKEN "
+                "bleibt unbenutzt. Zum Zuruecksetzen einmal "
+                "AGORA_ADMIN_TOKEN_UEBERNEHMEN=true setzen und neu starten."
+            )
         await session.commit()
 
 

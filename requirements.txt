@@ -19,6 +19,13 @@ httpx==0.28.1
 sympy==1.14.0
 # 2.5.x setzt Python 3.12 voraus; das Projekt laeuft ab 3.11.
 numpy==2.4.6
+# werkzeuge.verfuegbare_pakete() fragte scipy schon ab, installiert war es
+# nie - der Hinweis im Prompt nannte es also nicht, die Modelle schrieben
+# aber trotzdem "import scipy" und liefen in einen Fehler.
+scipy==1.17.1
+# Diagramme aus dem Rechner. Ohne Anzeige: das Agg-Backend wird in
+# app/werkzeuge.py erzwungen, bevor pyplot geladen wird.
+matplotlib==3.11.2
 # Zerlegt die Datei-Uploads. Vor 0.0.30 mit DoS-Meldungen, und das liegt
 # direkt im Anfrageweg.
 python-multipart==0.0.32
