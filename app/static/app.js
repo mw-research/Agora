@@ -113,19 +113,59 @@ $("#gate-form").addEventListener("submit", async (event) => {
   }
 });
 
+/** Ein Element verstecken oder zeigen - und nicht stolpern, wenn es fehlt.
+ *
+ * Genau daran ist es einmal gescheitert: nach einem Rollout lag altes
+ * index.html im Zwischenspeicher, waehrend app.js schon neu war. Der
+ * Zugriff auf ein Element, das es dort noch nicht gab, warf - und alles
+ * danach lief nicht mehr. Die Seite sah aus wie vorher, nur ohne Daten.
+ */
+function verstecke(kennung, verborgen) {
+  const el = $(kennung);
+  if (el) el.hidden = verborgen;
+  return Boolean(el);
+}
+
+// Die Fassung, zu der dieses Skript gehoert. Stimmt sie nicht mit der des
+// Servers ueberein, liegt hier etwas Altes im Zwischenspeicher.
+const OBERFLAECHE_VERSION = "0.38.0";
+
+/** Sagen, dass die Seite veraltet ist - und wie man das behebt.
+ *
+ * Zwei Anlaesse, zwei Saetze: entweder weichen die Fassungen ab, oder es
+ * fehlen Elemente im HTML. Im zweiten Fall sind die Nummern gleich, und
+ * "0.38.0 gegen 0.38.0" liest sich wie ein Fehler im Programm.
+ */
+function veraltetMelden(serverVersion) {
+  if (document.querySelector("#veraltet")) return;
+  const leiste = document.createElement("div");
+  leiste.id = "veraltet";
+  leiste.className = "veraltet";
+  leiste.textContent =
+    serverVersion && serverVersion !== OBERFLAECHE_VERSION
+      ? t("app.veraltet", { seite: OBERFLAECHE_VERSION, server: serverVersion })
+      : t("app.unvollstaendig");
+  const knopf = document.createElement("button");
+  knopf.textContent = t("app.neuLaden");
+  knopf.addEventListener("click", () => location.reload(true));
+  leiste.appendChild(knopf);
+  document.body.prepend(leiste);
+}
+
 // Was der Server kann, entscheidet, was die Oberflaeche zeigt.
 let KANN = {};
 fetch("/healthz")
   .then((r) => r.json())
   .then((d) => {
     KANN = d;
-    $("#antrag-oeffnen").hidden = d.antraege_offen === false;
-    $("#werkzeuge-zeile").hidden = !d.werkzeuge;
-    $("#werkzeuge-hinweis").hidden = !d.werkzeuge;
+    if (d.version && d.version !== OBERFLAECHE_VERSION) veraltetMelden(d.version);
+    verstecke("#antrag-oeffnen", d.antraege_offen === false);
+    verstecke("#werkzeuge-zeile", !d.werkzeuge);
+    verstecke("#werkzeuge-hinweis", !d.werkzeuge);
     // Ohne eingerichtete Suche nuetzt das Haekchen nichts - dann bliebe es
     // gesetzt und niemand verstuende, warum nichts kommt.
-    $("#recherche-zeile").hidden = !d.recherche;
-    $("#recherche-hinweis").hidden = !d.recherche;
+    verstecke("#recherche-zeile", !d.recherche);
+    verstecke("#recherche-hinweis", !d.recherche);
   })
   .catch(() => {});
 
@@ -327,14 +367,25 @@ async function boot() {
   $("#gate").hidden = true;
   $("#app").hidden = false;
   $("#whoami").textContent = `${ME.name}${ME.is_admin ? " (Admin)" : ""}`;
-  $("#tab-people").hidden = !ME.is_admin;
-  // Fuer alle hinterlegen darf nur ein Admin - also auch nur dort anbieten.
+
+  // Alles Schmueckende zuerst und nachsichtig: ein fehlendes Element darf
+  // nicht verhindern, dass darunter die Daten geladen werden. Fehlt eines,
+  // ist die Seite veraltet - dann sagen wir das, statt stumm halb zu
+  // starten.
+  let vollstaendig = verstecke("#tab-people", !ME.is_admin);
   for (const kennung of ["#cred-geteilt-zeile", "#cred-geteilt-hinweis",
                          "#agent-geteilt-zeile", "#muster-karte"]) {
-    $(kennung).hidden = !ME.is_admin;
+    vollstaendig = verstecke(kennung, !ME.is_admin) && vollstaendig;
   }
-  zeichneSchloss();
-  zeichneTeilnahme();
+  if (!vollstaendig) veraltetMelden(KANN.version || "?");
+
+  try {
+    zeichneSchloss();
+    zeichneTeilnahme();
+  } catch (fehler) {
+    console.warn("Kopfzeile unvollstaendig:", fehler);
+  }
+
   const laden = [loadForums(), loadAgents(), loadCredentials()];
   if (ME.is_admin) laden.push(loadUsers(), loadRequests());
   await Promise.all(laden);

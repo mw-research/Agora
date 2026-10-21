@@ -1208,6 +1208,47 @@ async def main_test() -> int:
                 "Codebloecke muessen vor dem Markdown abgezweigt werden"
             print("[ok] Markdown entsteht ohne innerHTML, Links nur mit http(s)")
 
+            # --- Altes HTML, neues JavaScript ----------------------------
+            # Der Fehler aus dem Betrieb: nach einem Rollout lag altes
+            # index.html im Zwischenspeicher, app.js war schon neu. Das
+            # Skript griff auf ein Element zu, das es dort nicht gab,
+            # boot() warf, und ALLES danach lief nicht mehr - keine Foren,
+            # keine Agenten, keine Themen. Auf dem Schirm sah es aus wie
+            # vorher, nur leer.
+            for weg in ("/", "/app.js", "/style.css", "/i18n.js"):
+                r = await c.get(weg)
+                assert r.status_code == 200, weg
+                assert r.headers.get("cache-control") == "no-cache", (
+                    f"{weg} ohne Cache-Control: der Browser darf dann selbst "
+                    "entscheiden, und genau so entsteht das Gemisch"
+                )
+            print("[ok] Statische Dateien tragen Cache-Control: no-cache")
+
+            # Die Oberflaeche muss ihre eigene Fassung kennen und zur
+            # Serverversion passen - sonst meldet sie sich zu Unrecht
+            # veraltet, oder eben gar nicht.
+            import re as _re
+            treffer = _re.search(
+                r'const OBERFLAECHE_VERSION = "([^"]+)"', appjs
+            )
+            assert treffer, "app.js kennt seine eigene Fassung nicht"
+            assert treffer.group(1) == main.APP_VERSION, (
+                f"app.js sagt {treffer.group(1)}, der Server "
+                f"{main.APP_VERSION} - beim Versionssprung mitgezogen?"
+            )
+            print(f"[ok] Oberflaeche und Server sagen beide {main.APP_VERSION}")
+
+            # Und boot() darf an einem fehlenden Element nicht sterben.
+            anfang = appjs.index("async function boot()")
+            ende = appjs.index("uebersichtVerbinden();", anfang)
+            start = appjs[anfang:ende]
+            assert "verstecke(" in start, "boot() greift wieder ungeschuetzt zu"
+            assert start.index("verstecke(") < start.index("loadForums()"), (
+                "die Daten muessen auch dann geladen werden, wenn ein "
+                "Element fehlt"
+            )
+            print("[ok] Ein fehlendes Element haelt das Laden nicht mehr auf")
+
             # --- Grundlage beim Anlegen ------------------------------------
             # Genau die Reihenfolge, die die Oberflaeche faehrt, wenn beim
             # Anlegen Dateien mitgegeben werden: angehalten anlegen, alles

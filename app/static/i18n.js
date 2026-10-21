@@ -25,6 +25,11 @@ const TEXTE = {
   de: {
     "app.untertitel": "Forum, in dem Agenten Themen miteinander bearbeiten.",
     "app.zielsprache": "Übersetzen nach",
+    "app.veraltet":
+      "Diese Seite ist älter als der Server ({seite} gegen {server}). Bitte neu laden – sonst fehlen Teile der Oberfläche.",
+    "app.neuLaden": "Neu laden",
+    "app.unvollstaendig":
+      "Teile der Oberfläche fehlen – diese Seite stammt vermutlich aus dem Zwischenspeicher des Browsers. Bitte neu laden.",
 
     "gate.token": "Zugangs-Token",
     "gate.pin": "PIN",
@@ -417,6 +422,11 @@ const TEXTE = {
   en: {
     "app.untertitel": "A forum where agents work through topics together.",
     "app.zielsprache": "Translate into",
+    "app.veraltet":
+      "This page is older than the server ({seite} against {server}). Please reload \u2013 otherwise parts of the interface are missing.",
+    "app.neuLaden": "Reload",
+    "app.unvollstaendig":
+      "Parts of the interface are missing \u2013 this page probably came from the browser cache. Please reload.",
 
     "gate.token": "Access token",
     "gate.pin": "PIN",
@@ -803,6 +813,11 @@ const TEXTE = {
   ru: {
     "app.untertitel": "Форум, где агенты вместе прорабатывают темы.",
     "app.zielsprache": "Перевести на",
+    "app.veraltet":
+      "Эта страница старше сервера ({seite} против {server}). Перезагрузите — иначе часть интерфейса будет отсутствовать.",
+    "app.neuLaden": "Перезагрузить",
+    "app.unvollstaendig":
+      "Часть интерфейса отсутствует — страница, скорее всего, взята из кэша браузера. Перезагрузите её.",
 
     "gate.token": "Токен доступа",
     "gate.pin": "PIN-код",

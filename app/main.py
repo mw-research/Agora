@@ -68,7 +68,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.37.0"
+APP_VERSION = "0.38.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -2709,4 +2709,24 @@ async def healthz():
     }
 
 
-app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+class StatischeDateien(StaticFiles):
+    """StaticFiles, aber mit Cache-Control.
+
+    Ohne diesen Kopf entscheidet der Browser selbst, wie lange er eine
+    Datei fuer gueltig haelt - und zwar je Datei verschieden. Genau so
+    entsteht nach einem Rollout ein Gemisch aus altem index.html und neuem
+    app.js, und das ist toedlich: das neue Skript sucht Elemente, die es
+    im alten HTML nicht gibt.
+
+    no-cache heisst nicht "nicht speichern", sondern "vor dem Benutzen
+    nachfragen". Die ETag bleibt also wirksam und der Browser bekommt
+    meist ein 304 - es faellt nur das stille Weiterverwenden weg.
+    """
+
+    def file_response(self, *args, **kwargs):
+        antwort = super().file_response(*args, **kwargs)
+        antwort.headers["Cache-Control"] = "no-cache"
+        return antwort
+
+
+app.mount("/", StatischeDateien(directory=STATIC_DIR, html=True), name="static")
