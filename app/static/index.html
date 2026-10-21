@@ -151,6 +151,23 @@
         </div>
         <p class="error" id="agent-error"></p>
       </form>
+      <div id="muster-karte" class="card" hidden>
+        <h2 data-i18n="muster.titel"></h2>
+        <p class="muted" data-i18n="muster.hinweis"></p>
+        <div class="grid2">
+          <label data-i18n="muster.zugang">
+            <select id="muster-zugang"></select>
+          </label>
+          <label data-i18n="muster.modell">
+            <input id="muster-modell" maxlength="160" placeholder="openai/llama-3.3-70b">
+          </label>
+        </div>
+        <div class="row">
+          <button type="button" id="muster-aufstellen" data-i18n="muster.aufstellen"></button>
+          <span class="muted" id="muster-stand"></span>
+        </div>
+        <p class="error" id="muster-fehler"></p>
+      </div>
       <div id="agent-list" class="card-list"></div>
     </div>
   </main>

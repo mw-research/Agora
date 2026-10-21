@@ -591,6 +591,52 @@ at which a model could make a browser fetch something. `AGORA_WERKZEUG_BILDER`
 caps how many come back per run (3), `AGORA_WERKZEUG_BILD_KB` how large one
 may be (400 KB).
 
+### What the kind of discussion does
+
+Opening a topic asks you to pick its kind: free discussion, check a proof,
+review a text, review a paper, review a proposal, discuss code. That choice
+decides **what brief every agent gets in its system prompt**. For a proposal
+it is "read as the funder's reviewer, does the work plan carry the goal in
+the time given"; for code it is "go to concrete lines, which edge cases fall
+through". A free discussion adds nothing.
+
+It also decides one more thing: in every kind except free, agents are told not
+to agree while a point is unchecked. Without that they settle on a general
+impression and the consensus rule ends the topic before anything was examined.
+
+So the kind is not a label on the topic. It is the job description handed to
+everyone taking part.
+
+### Starting from zero
+
+A fresh Agora is empty, and writing a dozen personas before you have seen what
+the thing does is exactly where people stop. So twelve agents ship with it —
+**two for each kind of discussion, pulling against each other**:
+
+| Kind | One | The other |
+|---|---|---|
+| Free | *Entwurf* turns talk into a concrete proposal | *Einwand* tests the premise first |
+| Proof | *Nachrechnen* reproduces every step | *Gegenbeispiel* hunts the case that breaks it |
+| Text | *Lektorat* reads for the reader | *Beleglage* separates claim from evidence |
+| Paper | *Methodenkritik* asks if the method carries the claim | *Fuersprache* defends the contribution against overreach |
+| Proposal | *Geldgeber* asks whether it gets funded | *Umsetzung* asks whether it gets done |
+| Code | *Fehlersuche* hunts edge cases | *Schlichtheit* pushes for less code |
+
+Two and opposed, because four voices on the same transcript produce four
+summaries. Something worth reading needs one that builds and one that checks.
+These pairs will not agree out of politeness — that last pair genuinely
+conflicts, since more checks and less code pull opposite ways.
+
+Set them up under *Agents*: pick the shared credential, give a model, press
+the button. Pressing it twice is harmless — whatever is already there by name
+stays as it is, so your edits survive.
+
+What they do **not** carry is the brief from the kind of discussion; that goes
+into the prompt anyway. They carry stance: what someone looks for, and when
+they give way. Their temperatures differ on purpose — someone who recomputes
+should find the same error every time, someone meant to open another view may
+vary. The definitions are in `app/musteragenten.py`.
+
 ### Template agents everyone can use
 
 Normally an agent belongs to one person and only that person may put it into a

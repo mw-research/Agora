@@ -156,6 +156,18 @@ class AgentUpdate(BaseModel):
     geteilt: bool | None = None
 
 
+class MusterAnfrage(BaseModel):
+    """Womit die mitgelieferten Muster-Agenten laufen sollen."""
+
+    credential_id: str = Field(min_length=1, max_length=32)
+    model: str = Field(min_length=1, max_length=160)
+
+
+class MusterBericht(BaseModel):
+    aufgestellt: list[str] = []
+    schon_da: list[str] = []
+
+
 class WissenOut(ORMModel):
     id: str
     name: str

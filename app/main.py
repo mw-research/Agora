@@ -33,6 +33,7 @@ from . import (
     llm,
     meldungen,
     modelle,
+    musteragenten,
     orchestrator,
     pruefarten,
     schemas,
@@ -67,7 +68,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.36.0"
+APP_VERSION = "0.37.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1483,6 +1484,69 @@ async def remove_wissen(
     await session.delete(stueck)
     await session.commit()
     return Response(status_code=204)
+
+
+@app.post("/api/admin/musteragenten", response_model=schemas.MusterBericht)
+async def musteragenten_aufstellen(
+    payload: schemas.MusterAnfrage,
+    user: User = Depends(admin_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Die mitgelieferten Muster-Agenten anlegen - zwei je Art.
+
+    Gedacht fuer den ersten Tag: ein frisches Agora ist leer, und wer erst
+    zwoelf Personas schreiben muss, hoert vorher auf. Ein Zugang fuer alle
+    genuegt, der Rest steht in app/musteragenten.py.
+
+    Mehrfach aufrufbar. Was dem Namen nach schon da ist, bleibt wie es ist -
+    sonst ueberschriebe ein zweiter Klick die Aenderungen, die jemand
+    inzwischen daran gemacht hat.
+    """
+    cred = await session.get(Credential, payload.credential_id)
+    if cred is None or not cred.geteilt:
+        raise HTTPException(
+            400,
+            "Dafuer braucht es einen Zugang fuer alle. Hinterlege zuerst "
+            "einen unter Modelle - sonst stuenden die Muster-Agenten still, "
+            "sobald dein Freischaltfenster ablaeuft.",
+        )
+
+    vorhanden = {
+        name
+        for (name,) in (
+            await session.execute(select(Agent.name).where(Agent.geteilt.is_(True)))
+        ).all()
+    }
+
+    aufgestellt: list[str] = []
+    for muster in musteragenten.MUSTER:
+        if muster.name in vorhanden:
+            continue
+        session.add(
+            Agent(
+                owner_id=user.id,
+                name=muster.name,
+                role=muster.role,
+                persona=muster.persona,
+                model=payload.model.strip(),
+                credential_id=cred.id,
+                temperature=muster.temperature,
+                is_public=True,
+                geteilt=True,
+            )
+        )
+        aufgestellt.append(muster.name)
+
+    await session.commit()
+    if aufgestellt:
+        log.warning(
+            "Admin %s hat %d mitgelieferte Muster-Agenten aufgestellt",
+            user.name, len(aufgestellt),
+        )
+    return schemas.MusterBericht(
+        aufgestellt=aufgestellt,
+        schon_da=sorted(vorhanden & {x.name for x in musteragenten.MUSTER}),
+    )
 
 
 @app.delete("/api/agents/{agent_id}", status_code=204)

@@ -330,7 +330,7 @@ async function boot() {
   $("#tab-people").hidden = !ME.is_admin;
   // Fuer alle hinterlegen darf nur ein Admin - also auch nur dort anbieten.
   for (const kennung of ["#cred-geteilt-zeile", "#cred-geteilt-hinweis",
-                         "#agent-geteilt-zeile"]) {
+                         "#agent-geteilt-zeile", "#muster-karte"]) {
     $(kennung).hidden = !ME.is_admin;
   }
   zeichneSchloss();
@@ -2033,12 +2033,22 @@ async function loadCredentials() {
   list.innerHTML = "";
   const select = $("#agent-credential");
   select.innerHTML = `<option value="">${t("agent.ohneZugangLang")}</option>`;
+  // Fuer die Muster-Agenten kommen nur Gemeinschaftszugaenge in Frage.
+  const musterWahl = $("#muster-zugang");
+  if (musterWahl) musterWahl.innerHTML = "";
 
   for (const credential of credentials) {
     const option = document.createElement("option");
     option.value = credential.id;
     option.textContent = `${credential.label} (${credential.provider})`;
     select.appendChild(option);
+
+    if (credential.geteilt && musterWahl) {
+      const fuerMuster = document.createElement("option");
+      fuerMuster.value = credential.id;
+      fuerMuster.textContent = `${credential.label} (${credential.provider})`;
+      musterWahl.appendChild(fuerMuster);
+    }
 
     const card = document.createElement("div");
     card.className = "card";
@@ -2077,6 +2087,41 @@ async function loadCredentials() {
     list.appendChild(card);
   }
 }
+
+/** Die mitgelieferten Muster-Agenten aufstellen.
+ *
+ * Mehrfach druecken ist harmlos: der Server laesst stehen, was dem Namen
+ * nach schon da ist, statt Aenderungen zu ueberschreiben.
+ */
+async function musterAufstellen() {
+  const zugang = $("#muster-zugang").value;
+  const modell = $("#muster-modell").value.trim();
+  $("#muster-fehler").textContent = "";
+  if (!zugang) {
+    $("#muster-fehler").textContent = t("muster.ohneZugang");
+    return;
+  }
+  if (!modell) {
+    $("#muster-fehler").textContent = t("muster.ohneModell");
+    return;
+  }
+  $("#muster-stand").textContent = t("muster.laeuft");
+  try {
+    const bericht = await api("/api/admin/musteragenten", {
+      method: "POST",
+      body: JSON.stringify({ credential_id: zugang, model: modell }),
+    });
+    $("#muster-stand").textContent = bericht.aufgestellt.length
+      ? t("muster.fertig", { anzahl: bericht.aufgestellt.length })
+      : t("muster.nichtsNeues");
+    await loadAgents();
+  } catch (error) {
+    $("#muster-stand").textContent = "";
+    $("#muster-fehler").textContent = error.message;
+  }
+}
+
+$("#muster-aufstellen").addEventListener("click", musterAufstellen);
 
 // Das Kopffeld ist nur bei der entsprechenden Auswahl sinnvoll.
 $("#cred-auth").addEventListener("change", (event) => {
