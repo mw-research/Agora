@@ -75,6 +75,42 @@ for _name in ("system", "popen", "execv", "execve", "fork", "spawnl", "spawnv"):
         setattr(_os, _name, _gesperrt("Programme starten"))
 
 _sys.setrecursionlimit(3000)
+
+# --- Zeichnen -------------------------------------------------------------
+# Jede Abbildung, die am Ende offen ist, wird als PNG abgelegt und vom
+# Aufrufer eingesammelt. plt.show() legt sofort ab: die Modelle schreiben es
+# aus Gewohnheit, und ohne Anzeige taete es sonst nichts.
+_bildnummer = [0]
+
+def _ablegen(fig=None):
+    import matplotlib.pyplot as _plt
+    ziele = [fig] if fig is not None else [
+        _plt.figure(n) for n in _plt.get_fignums()
+    ]
+    for ziel in ziele:
+        if not ziel.get_axes():
+            continue
+        _bildnummer[0] += 1
+        ziel.savefig(
+            f"bild-{_bildnummer[0]:02d}.png",
+            format="png", dpi=110, bbox_inches="tight",
+        )
+    _plt.close("all")
+
+def zeige(fig=None):
+    """Eine Abbildung in die Diskussion stellen."""
+    _ablegen(fig)
+
+try:
+    import matplotlib as _mpl
+    _mpl.use("Agg")
+    import matplotlib.pyplot as _plt
+    _plt.show = lambda *a, **k: _ablegen()
+    import atexit as _atexit
+    _atexit.register(_ablegen)
+except Exception:
+    # Ohne matplotlib laeuft alles andere weiter.
+    pass
 '''
 
 
@@ -102,19 +138,54 @@ def _grenzen(cpu_sekunden: int, speicher_mb: int):
     return setzen
 
 
+def _bilder_einsammeln(ordner: str, hoechstens: int, kb: int) -> list[str]:
+    """Die abgelegten Diagramme als base64-PNG.
+
+    Nur was der Vorspann selbst geschrieben hat (bild-NN.png) und nur PNG -
+    der Browser bekommt daraus ein <img src="data:image/png;base64,...">,
+    und dort soll nichts anderes hineingeraten koennen. SVG waere Text und
+    kaeme mit eigenem Skript; deshalb ausdruecklich nicht.
+    """
+    import base64
+
+    gefunden = sorted(
+        name for name in os.listdir(ordner)
+        if name.startswith("bild-") and name.endswith(".png")
+    )
+    bilder: list[str] = []
+    for name in gefunden[:hoechstens]:
+        pfad = os.path.join(ordner, name)
+        try:
+            groesse = os.path.getsize(pfad)
+            if groesse > kb * 1024:
+                log.info("Diagramm %s uebersprungen: %d Bytes", name, groesse)
+                continue
+            with open(pfad, "rb") as f:
+                roh = f.read()
+        except OSError:
+            continue
+        if not roh.startswith(b"\x89PNG\r\n\x1a\n"):
+            continue
+        bilder.append(base64.b64encode(roh).decode("ascii"))
+    return bilder
+
+
 def rechnen(
     code: str,
     sekunden: int = 15,
     speicher_mb: int = 512,
     max_zeichen: int = 4000,
-) -> tuple[str, bool]:
-    """Fuehrt Code aus und liefert (ausgabe, geglueckt).
+    hoechstens_bilder: int = 3,
+    bild_kb: int = 400,
+) -> tuple[str, list[str], bool]:
+    """Fuehrt Code aus und liefert (ausgabe, bilder, geglueckt).
 
     Laeuft in einem eigenen Prozess mit eigener, leerer Arbeitsumgebung. Was
-    dort geschrieben wird, ist nach dem Aufruf fort.
+    dort geschrieben wird, ist nach dem Aufruf fort - ausser den Diagrammen,
+    die vorher eingesammelt werden.
     """
     if not code.strip():
-        return "Der Block war leer.", False
+        return "Der Block war leer.", [], False
 
     with tempfile.TemporaryDirectory(prefix="agora-rechnen-") as ordner:
         datei = os.path.join(ordner, "rechnung.py")
@@ -129,6 +200,10 @@ def rechnen(
             "PYTHONDONTWRITEBYTECODE": "1",
             # Falls jemand matplotlib benutzt: kein Fenster aufmachen.
             "MPLBACKEND": "Agg",
+            # Ohne das legt matplotlib einen Zwischenspeicher an und schreibt
+            # eine Warnung nach stderr - die landete sonst in der Ausgabe und
+            # sah fuer den Agenten wie ein Fehler aus.
+            "MPLCONFIGDIR": ordner,
             "OPENBLAS_NUM_THREADS": "1",
             "OMP_NUM_THREADS": "1",
         }
@@ -147,10 +222,13 @@ def rechnen(
                 preexec_fn=_grenzen(sekunden, speicher_mb) if os.name == "posix" else None,
             )
         except subprocess.TimeoutExpired:
-            return f"Abgebrochen: laenger als {sekunden} Sekunden gelaufen.", False
+            return f"Abgebrochen: laenger als {sekunden} Sekunden gelaufen.", [], False
         except Exception as exc:  # pragma: no cover - Notnagel
             log.exception("Rechnen fehlgeschlagen")
-            return f"Konnte nicht ausgefuehrt werden: {exc}", False
+            return f"Konnte nicht ausgefuehrt werden: {exc}", [], False
+
+        # Noch innerhalb des Ordners - danach raeumt ihn der Kontext ab.
+        bilder = _bilder_einsammeln(ordner, hoechstens_bilder, bild_kb)
 
     ausgabe = (fertig.stdout or "") + (fertig.stderr or "")
     ausgabe = ausgabe.strip()
@@ -158,11 +236,15 @@ def rechnen(
     if fertig.returncode != 0 and not ausgabe:
         ausgabe = f"Beendet mit Rueckgabewert {fertig.returncode} und ohne Ausgabe."
     if not ausgabe:
-        ausgabe = "Kein Ergebnis - vergiss print() nicht."
+        ausgabe = (
+            f"{len(bilder)} Diagramm(e) gezeichnet, sonst keine Ausgabe."
+            if bilder
+            else "Kein Ergebnis - vergiss print() nicht."
+        )
     if len(ausgabe) > max_zeichen:
         ausgabe = ausgabe[:max_zeichen].rstrip() + f"\n[... nach {max_zeichen} Zeichen abgeschnitten]"
 
-    return ausgabe, fertig.returncode == 0
+    return ausgabe, bilder, fertig.returncode == 0
 
 
 async def ausfuehren(
@@ -171,7 +253,9 @@ async def ausfuehren(
     speicher_mb: int = 512,
     max_zeichen: int = 4000,
     dienst_url: str = "",
-) -> tuple[str, bool]:
+    hoechstens_bilder: int = 3,
+    bild_kb: int = 400,
+) -> tuple[str, list[str], bool]:
     """Rechnen lassen - moeglichst nicht im eigenen Prozess.
 
     Mit dienst_url geht der Code an einen eigenen Rechner-Dienst, der im
@@ -181,7 +265,10 @@ async def ausfuehren(
     import asyncio
 
     if not dienst_url:
-        return await asyncio.to_thread(rechnen, code, sekunden, speicher_mb, max_zeichen)
+        return await asyncio.to_thread(
+            rechnen, code, sekunden, speicher_mb, max_zeichen,
+            hoechstens_bilder, bild_kb,
+        )
 
     import httpx
 
@@ -194,16 +281,19 @@ async def ausfuehren(
                     "sekunden": sekunden,
                     "speicher_mb": speicher_mb,
                     "max_zeichen": max_zeichen,
+                    "hoechstens_bilder": hoechstens_bilder,
+                    "bild_kb": bild_kb,
                 },
             )
-        antwort.raise_for_status()
-        daten = antwort.json()
-        return daten["ausgabe"], bool(daten["geglueckt"])
+            antwort.raise_for_status()
+            daten = antwort.json()
+        return daten["ausgabe"], daten.get("bilder") or [], bool(daten["geglueckt"])
     except Exception as exc:
         log.warning("Rechner-Dienst nicht erreichbar: %s", exc)
         return (
-            "Der Rechner-Dienst ist nicht erreichbar - gerechnet wurde nichts. "
-            f"({type(exc).__name__})",
+            "Der Rechner-Dienst ist nicht erreichbar. Die Rechnung wurde "
+            "nicht ausgefuehrt.",
+            [],
             False,
         )
 

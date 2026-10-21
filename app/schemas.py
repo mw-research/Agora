@@ -319,3 +319,7 @@ class PostOut(ORMModel):
     model: str | None
     usage: dict | None
     created_at: UtcDatetime
+    # Diagramme aus einer Rechnung, als base64-PNG. Stehen bewusst neben
+    # dem Inhalt und nicht darin: content geht in den Prompt der naechsten
+    # Runde, ein Bild waere dort zwanzigtausend Token.
+    bilder: list[str] | None = None

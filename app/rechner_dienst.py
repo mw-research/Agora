@@ -38,11 +38,15 @@ class Auftrag(BaseModel):
     sekunden: int = Field(default=15, ge=1, le=120)
     speicher_mb: int = Field(default=512, ge=64, le=4096)
     max_zeichen: int = Field(default=4000, ge=100, le=100_000)
+    hoechstens_bilder: int = Field(default=3, ge=0, le=10)
+    bild_kb: int = Field(default=400, ge=16, le=4096)
 
 
 class Ergebnis(BaseModel):
     ausgabe: str
     geglueckt: bool
+    # Diagramme als base64-PNG. Leer, wenn nicht gezeichnet wurde.
+    bilder: list[str] = []
 
 
 @app.post("/rechnen", response_model=Ergebnis)
@@ -50,14 +54,16 @@ async def rechnen(auftrag: Auftrag) -> Ergebnis:
     import asyncio
 
     log.info("Auftrag ueber %d Zeichen", len(auftrag.code))
-    ausgabe, geglueckt = await asyncio.to_thread(
+    ausgabe, bilder, geglueckt = await asyncio.to_thread(
         werkzeuge.rechnen,
         auftrag.code,
         auftrag.sekunden,
         auftrag.speicher_mb,
         auftrag.max_zeichen,
+        auftrag.hoechstens_bilder,
+        auftrag.bild_kb,
     )
-    return Ergebnis(ausgabe=ausgabe, geglueckt=geglueckt)
+    return Ergebnis(ausgabe=ausgabe, geglueckt=geglueckt, bilder=bilder)
 
 
 @app.get("/healthz")

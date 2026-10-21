@@ -467,3 +467,22 @@ dialog menu { display: flex; justify-content: flex-end; gap: .5rem; margin: 1rem
    abweist - und wohin der lange Text gehoert. */
 .zaehler { display: block; font-size: .75rem; margin-top: .2rem; }
 .zaehler.knapp { color: var(--warn, #f59e0b); }
+
+/* --- Diagramme aus einer Rechnung ---
+   Stehen unter der Ausgabe, nicht darin. Auf weissem Grund, weil
+   matplotlib mit weissem Hintergrund zeichnet und ein dunkler Rahmen
+   darum sonst wie ein Fehler aussieht. */
+.diagramme {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  margin-top: .7rem;
+  min-width: 0;
+}
+.diagramme img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}

@@ -425,12 +425,14 @@ async def _rechnen_lassen(
 
     code = "\n".join(bloecke)
     log.info("Thread %s: %s rechnet (%d Zeichen)", thread.id, speaker.name, len(code))
-    ausgabe, geglueckt = await werkzeuge.ausfuehren(
+    ausgabe, bilder, geglueckt = await werkzeuge.ausfuehren(
         code,
         settings.werkzeug_sekunden,
         settings.werkzeug_speicher_mb,
         settings.werkzeug_zeichen,
         settings.rechner_url,
+        settings.werkzeug_bilder,
+        settings.werkzeug_bild_kb,
     )
 
     # Als Block ablegen: so steht die Ausgabe in Festbreite im Forum und ist
@@ -445,6 +447,9 @@ async def _rechnen_lassen(
         author_name="Rechner",
         agent_id=speaker.id,
         content=gezeigt,
+        # Die Bilder bleiben neben dem Text, nicht darin: content geht in den
+        # Prompt der naechsten Runde.
+        bilder=bilder or None,
         status="complete" if geglueckt else "error",
         round_no=thread.rounds_done,
     )
@@ -667,6 +672,14 @@ def _build_messages(
             "  Er wird ausgefuehrt, die Ausgabe erscheint als naechster Beitrag, "
             "und danach bist du gleich wieder dran, um sie einzuordnen. Sichtbar "
             "ist nur, was du mit print() ausgibst.\n"
+            "  Du kannst auch zeichnen, wenn eine Abbildung mehr sagt als eine "
+            "Zahlenreihe - Balken, Torte, Verlauf, Zeitplan. Nimm matplotlib "
+            "und schliesse mit plt.show(); das Bild erscheint beim "
+            "Rechenergebnis. Beschrifte Achsen und Einheiten.\n"
+            "  ACHTUNG: du siehst dein eigenes Diagramm danach NICHT wieder - "
+            "es steht nur fuer die Menschen da. Sag im naechsten Beitrag "
+            "deshalb in Worten, was darauf zu sehen ist, und gib die Zahlen "
+            "zusaetzlich mit print() aus.\n"
             "  Zur Verfuegung stehen: " + ", ".join(werkzeuge.verfuegbare_pakete()) + ".\n"
             "  Kein Netzwerk, kein Dateizugriff. Nutze das, wann immer eine Zahl, "
             "eine Umformung oder ein Gegenbeispiel zu pruefen ist - behaupte "
@@ -893,6 +906,10 @@ async def add_post(session: AsyncSession, thread_id: str, **kwargs) -> Post:
             "post_id": post.id,
             "status": "complete",
             "content": post.content,
+            # Nur der Hinweis, nicht die Bilder selbst: ueber Postgres NOTIFY
+            # gehen 7000 Zeichen, ein PNG ist mehr. Die Oberflaeche holt sie
+            # daraufhin nach.
+            "hat_bilder": bool(post.bilder),
         }
     )
     return post

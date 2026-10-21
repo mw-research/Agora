@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     werkzeug_sekunden: int = 15
     werkzeug_speicher_mb: int = 512
     werkzeug_zeichen: int = 4000
+    # Wie viele Diagramme eine Rechnung hoechstens zurueckgeben darf und wie
+    # gross eines davon sein darf. Die Bilder gehen nicht in den Prompt,
+    # kosten also keine Token - aber sie liegen in der Datenbank und gehen
+    # durch jede Sicherung.
+    werkzeug_bilder: int = 3
+    werkzeug_bild_kb: int = 400
     # So oft darf ein Agent in Folge rechnen, bevor wieder jemand anders dran
     # ist. Ohne die Grenze koennte er sich in einer Rechnung verlieren.
     werkzeug_runden: int = 3

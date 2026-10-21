@@ -382,4 +382,11 @@ class Post(Base):
     model: Mapped[str | None] = mapped_column(String(160), nullable=True)
     usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
+    # Diagramme aus einer Rechnung, als PNG in base64. Bewusst NICHT in
+    # content: dessen Text geht in den Prompt der naechsten Runde, und ein
+    # Bild waere dort zwanzigtausend Token - in jeder Runde erneut. Der
+    # Agent sieht sein eigenes Diagramm also nie wieder und wird im Prompt
+    # aufgefordert, in Worten zu sagen, was darauf steht.
+    bilder: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)

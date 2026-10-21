@@ -1031,6 +1031,30 @@ function koerperFuellen(el, text) {
   });
 }
 
+/** Diagramme einer Rechnung unter den Beitrag haengen.
+ *
+ * Die Daten kommen aus der eigenen Spalte des Beitrags, nicht aus seinem
+ * Text - und wir bauen die data-URL selbst aus base64, statt eine Adresse
+ * aus dem Modell zu uebernehmen. Deshalb gibt es hier keine Stelle, an der
+ * ein Modell einen fremden Abruf unterschieben koennte.
+ */
+function bilderAnhaengen(knoten, bilder) {
+  const alt = knoten.querySelector(".diagramme");
+  if (alt) alt.remove();
+  if (!bilder || !bilder.length) return;
+  const kasten = document.createElement("div");
+  kasten.className = "diagramme";
+  for (const roh of bilder) {
+    if (typeof roh !== "string" || !/^[A-Za-z0-9+/=\s]+$/.test(roh)) continue;
+    const bild = document.createElement("img");
+    bild.src = `data:image/png;base64,${roh}`;
+    bild.alt = t("thread.diagramm");
+    bild.loading = "lazy";
+    kasten.appendChild(bild);
+  }
+  if (kasten.childElementCount) knoten.appendChild(kasten);
+}
+
 function postNode(post) {
   const node = document.createElement("article");
   node.className =
@@ -1058,6 +1082,7 @@ function postNode(post) {
     </div>
     <div class="body"></div>`;
   koerperFuellen(node.querySelector(".body"), post.content);
+  bilderAnhaengen(node, post.bilder);
   node._roh = post.content || "";
 
   // Uebersetzen auf Knopfdruck: automatisch waere teuer fuer Beitraege,
@@ -1226,6 +1251,17 @@ function connectStream(threadId) {
     node._roh = data.content || "";
     koerperFuellen(node.querySelector(".body"), node._roh);
     node.className = `post ${node.classList.contains("human") ? "human" : ""} ${data.status}`;
+    // Diagramme kommen nicht im Ereignis mit - ueber Postgres NOTIFY gehen
+    // 7000 Zeichen, ein PNG ist mehr. Also einmal nachholen, wenn welche da
+    // sind.
+    if (data.hat_bilder && CURRENT) {
+      api(`/api/threads/${CURRENT.id}/posts`)
+        .then((posts) => {
+          const frisch = posts.find((p) => p.id === data.post_id);
+          if (frisch) bilderAnhaengen(node, frisch.bilder);
+        })
+        .catch(() => {});
+    }
     // Das Thema steht offen vor mir - also habe ich es gesehen.
     if (CURRENT) gelesenMelden(CURRENT.id);
   });
