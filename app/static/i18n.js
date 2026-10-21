@@ -193,6 +193,9 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Ein Halbsatz, höchstens 200 Zeichen – er steht in jeder Runde in der Sprecherwahl. Ausführliches gehört in die Persona.",
     "agent.rolleUebrig": "noch {uebrig} Zeichen – Ausführliches gehört in die Persona",
+    "agent.bearbeiten": "Bearbeiten",
+    "agent.bearbeitenTitel": "„{name}“ bearbeiten",
+    "agent.uebernehmen": "Übernehmen",
     "agent.personaHinweis":
       "Wie dieser Agent urteilt und schreibt. Liegt in jedem seiner Aufrufe – was er wissen soll, gehört in „Eigenes Material“, nicht hierher.",
     "agent.personaUmfang": "{zeichen} Zeichen – rund {token} Token in jeder Runde.",
@@ -558,6 +561,9 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Half a sentence, 200 characters at most – it goes into the speaker choice every round. Anything longer belongs in the persona.",
     "agent.rolleUebrig": "{uebrig} characters left – longer text belongs in the persona",
+    "agent.bearbeiten": "Edit",
+    "agent.bearbeitenTitel": "Edit \u201c{name}\u201d",
+    "agent.uebernehmen": "Apply",
     "agent.personaHinweis":
       "How this agent judges and writes. It sits in every one of its calls – what it should know belongs in \u201cOwn material\u201d, not here.",
     "agent.personaUmfang": "{zeichen} characters – roughly {token} tokens every round.",
@@ -921,6 +927,9 @@ const TEXTE = {
     "agent.rolleHinweis":
       "Полфразы, не больше 200 символов — она участвует в выборе говорящего каждый раунд. Подробности место в персоне.",
     "agent.rolleUebrig": "осталось {uebrig} символов — подробности в персону",
+    "agent.bearbeiten": "Изменить",
+    "agent.bearbeitenTitel": "Изменить «{name}»",
+    "agent.uebernehmen": "Применить",
     "agent.personaHinweis":
       "Как этот агент рассуждает и пишет. Входит в каждый его запрос — то, что он должен знать, место в «Своих материалах», а не здесь.",
     "agent.personaUmfang": "{zeichen} символов — примерно {token} токенов в каждом раунде.",

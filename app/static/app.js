@@ -168,6 +168,7 @@ async function nachSprachwechsel() {
   // Anmeldung im Dokument gibt, und ihr Text kommt aus t() statt aus
   // data-i18n - uebersetzeSeite() fasst sie also nicht an.
   for (const zeichnen of ZAEHLER) zeichnen();
+  zeichneAgentFormular();
   if (!ME) return; // Auf der Anmeldeseite genuegt uebersetzeSeite()
   zeichneSchloss();
   zeichneTeilnahme();
@@ -1413,6 +1414,13 @@ async function loadAgents() {
     }
 
     if (eigener) {
+      const aendern = document.createElement("button");
+      aendern.textContent = t("agent.bearbeiten");
+      aendern.addEventListener("click", () => agentBearbeiten(agent));
+      card.appendChild(aendern);
+    }
+
+    if (eigener) {
       const akte = document.createElement("button");
       akte.textContent = agent.wissen_dateien
         ? t("wissen.knopfMit", { anzahl: agent.wissen_dateien })
@@ -1627,30 +1635,90 @@ $("#agent-credential").addEventListener("change", () => {
   $("#agent-modelle-stand").textContent = "";
 });
 
+// Welchen Agenten das Formular gerade bearbeitet - leer heisst: neuer.
+// Dasselbe Formular fuer beides, damit es nur eine Stelle gibt, an der die
+// Felder und ihre Grenzen stehen.
+let AGENT_BEARBEITET = null;
+
+/** Beschriftet das Formular nach seinem Zustand.
+ *
+ * Eigene Funktion, weil uebersetzeSeite() die Ueberschrift nach einem
+ * Sprachwechsel auf "anlegen" zuruecksetzt - data-i18n kennt den Zustand
+ * nicht.
+ */
+function zeichneAgentFormular() {
+  const titel = $("#agent-form-titel");
+  const abbrechen = $("#agent-abbrechen");
+  if (!titel) return;
+  if (AGENT_BEARBEITET) {
+    titel.textContent = t("agent.bearbeitenTitel", { name: AGENT_BEARBEITET.name });
+    $("#agent-speichern").textContent = t("agent.uebernehmen");
+    abbrechen.hidden = false;
+  } else {
+    titel.textContent = t("agent.anlegen");
+    $("#agent-speichern").textContent = t("agent.speichern");
+    abbrechen.hidden = true;
+  }
+}
+
+function agentBearbeiten(agent) {
+  AGENT_BEARBEITET = agent;
+  $("#agent-name").value = agent.name;
+  $("#agent-role").value = agent.role || "";
+  $("#agent-model").value = agent.model;
+  $("#agent-persona").value = agent.persona || "";
+  $("#agent-credential").value = agent.credential_id || "";
+  $("#agent-temp").value = agent.temperature;
+  $("#agent-maxtok").value = agent.max_tokens;
+  $("#agent-public").checked = agent.is_public;
+  $("#agent-error").textContent = "";
+  zeichneAgentFormular();
+  for (const zeichnen of ZAEHLER) zeichnen();
+  $("#agent-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#agent-name").focus();
+}
+
+function agentFormularLeeren() {
+  AGENT_BEARBEITET = null;
+  $("#agent-form").reset();
+  $("#agent-public").checked = true;
+  $("#agent-error").textContent = "";
+  zeichneAgentFormular();
+  for (const zeichnen of ZAEHLER) zeichnen();
+}
+
+$("#agent-abbrechen").addEventListener("click", agentFormularLeeren);
+
 $("#agent-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#agent-error").textContent = "";
+  const werte = {
+    name: $("#agent-name").value.trim(),
+    role: $("#agent-role").value.trim(),
+    model: $("#agent-model").value.trim(),
+    persona: $("#agent-persona").value.trim(),
+    credential_id: $("#agent-credential").value || null,
+    temperature: Number($("#agent-temp").value),
+    max_tokens: Number($("#agent-maxtok").value),
+    is_public: $("#agent-public").checked,
+  };
   try {
-    await api("/api/agents", {
-      method: "POST",
-      body: JSON.stringify({
-        name: $("#agent-name").value.trim(),
-        role: $("#agent-role").value.trim(),
-        model: $("#agent-model").value.trim(),
-        persona: $("#agent-persona").value.trim(),
-        credential_id: $("#agent-credential").value || null,
-        temperature: Number($("#agent-temp").value),
-        max_tokens: Number($("#agent-maxtok").value),
-        is_public: $("#agent-public").checked,
-      }),
-    });
-    $("#agent-form").reset();
-    $("#agent-public").checked = true;
+    if (AGENT_BEARBEITET) {
+      await api(`/api/agents/${AGENT_BEARBEITET.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(werte),
+      });
+    } else {
+      await api("/api/agents", { method: "POST", body: JSON.stringify(werte) });
+    }
+    agentFormularLeeren();
     await loadAgents();
   } catch (error) {
     $("#agent-error").textContent = error.message;
   }
 });
+
+zeichneAgentFormular();
 
 // ------------------------------------------------------------- Modelle ---
 function authText(stil) {

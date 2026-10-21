@@ -97,7 +97,7 @@
   <main id="view-agents" class="view" hidden>
     <div class="column">
       <form id="agent-form" class="card">
-        <h2 data-i18n="agent.anlegen"></h2>
+        <h2 id="agent-form-titel" data-i18n="agent.anlegen"></h2>
         <div class="grid2">
           <label data-i18n="agent.name">
             <input id="agent-name" maxlength="80" required data-i18n-ph="agent.namePh">
@@ -137,7 +137,12 @@
             <span data-i18n="agent.oeffentlich"></span>
           </label>
         </div>
-        <button type="submit" class="primary" data-i18n="agent.speichern"></button>
+        <div class="row">
+          <button type="submit" class="primary" id="agent-speichern"
+                  data-i18n="agent.speichern"></button>
+          <button type="button" id="agent-abbrechen" hidden
+                  data-i18n="allgemein.abbrechen"></button>
+        </div>
         <p class="error" id="agent-error"></p>
       </form>
       <div id="agent-list" class="card-list"></div>
