@@ -36,7 +36,7 @@ from app.models import Base  # noqa: E402
 # sie hier hinein - oder ausdruecklich als leer markiert.
 ZUORDNUNG: dict[str, list[str]] = {
     "agents": ["AgentCreate", "AgentUpdate"],
-    "credentials": ["CredentialCreate"],
+    "credentials": ["CredentialCreate", "CredentialUpdate"],
     "forums": ["ForumCreate", "ForumUpdate"],
     "threads": ["ThreadCreate", "ThreadUpdate"],
     "users": ["UserCreate"],

@@ -128,7 +128,7 @@ function verstecke(kennung, verborgen) {
 
 // Die Fassung, zu der dieses Skript gehoert. Stimmt sie nicht mit der des
 // Servers ueberein, liegt hier etwas Altes im Zwischenspeicher.
-const OBERFLAECHE_VERSION = "0.39.0";
+const OBERFLAECHE_VERSION = "0.40.0";
 
 /** Sagen, dass die Seite veraltet ist - und wie man das behebt.
  *
@@ -213,6 +213,7 @@ async function nachSprachwechsel() {
   // data-i18n - uebersetzeSeite() fasst sie also nicht an.
   for (const zeichnen of ZAEHLER) zeichnen();
   zeichneAgentFormular();
+  if (ME) zeichneZugangFormular();
   if (!ME) return; // Auf der Anmeldeseite genuegt uebersetzeSeite()
   zeichneSchloss();
   zeichneTeilnahme();
@@ -2119,8 +2120,14 @@ async function loadCredentials() {
         </p>
       </div>`;
     // Einen Zugang fuer alle entfernt nur ein Admin; einen fremden
-    // ueberhaupt niemand.
+    // ueberhaupt niemand. Fuers Aendern gilt dasselbe.
     const meiner = credential.owner_id === ME.id;
+    if (credential.geteilt ? ME.is_admin : meiner) {
+      const aendern = document.createElement("button");
+      aendern.textContent = t("zugang.bearbeiten");
+      aendern.addEventListener("click", () => zugangBearbeiten(credential));
+      card.appendChild(aendern);
+    }
     if (credential.geteilt ? ME.is_admin : meiner) {
       const remove = document.createElement("button");
       remove.className = "danger";
@@ -2181,24 +2188,81 @@ $("#cred-auth").addEventListener("change", (event) => {
   if (eigenesFeld && !$("#cred-header").value) $("#cred-header").value = "x-api-key";
 });
 
+// Welchen Zugang das Formular gerade bearbeitet - leer heisst: neuer.
+let ZUGANG_BEARBEITET = null;
+
+function zeichneZugangFormular() {
+  const titel = $("#cred-form-titel");
+  if (!titel) return;
+  if (ZUGANG_BEARBEITET) {
+    titel.textContent = t("zugang.bearbeitenTitel", { name: ZUGANG_BEARBEITET.label });
+    $("#cred-speichern").textContent = t("agent.uebernehmen");
+  } else {
+    titel.textContent = t("zugang.titel");
+    $("#cred-speichern").textContent = t("zugang.speichern");
+  }
+  verstecke("#cred-abbrechen", !ZUGANG_BEARBEITET);
+  verstecke("#cred-schluessel-hinweis", !ZUGANG_BEARBEITET);
+  // Ein Zugang fuer alle bleibt einer - der Wechsel hiesse umschluesseln.
+  verstecke("#cred-geteilt-zeile", !ME.is_admin || Boolean(ZUGANG_BEARBEITET));
+  verstecke("#cred-geteilt-hinweis", !ME.is_admin || Boolean(ZUGANG_BEARBEITET));
+}
+
+function zugangBearbeiten(credential) {
+  ZUGANG_BEARBEITET = credential;
+  $("#cred-label").value = credential.label;
+  $("#cred-provider").value = credential.provider;
+  // Der Schluessel wird NICHT vorgefuellt - er verlaesst den Server nie.
+  // Leer heisst hier deshalb "unveraendert", nicht "loeschen".
+  $("#cred-key").value = "";
+  $("#cred-base").value = credential.api_base || "";
+  $("#cred-auth").value = credential.auth_style || "api_key";
+  $("#cred-header").value = credential.header_name || "";
+  $("#cred-header").disabled = credential.auth_style !== "header";
+  $("#cred-extra").value = "";
+  $("#cred-error").textContent = "";
+  zeichneZugangFormular();
+  $("#cred-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#cred-label").focus();
+}
+
+function zugangFormularLeeren() {
+  ZUGANG_BEARBEITET = null;
+  $("#cred-form").reset();
+  $("#cred-header").disabled = true;
+  $("#cred-error").textContent = "";
+  zeichneZugangFormular();
+}
+
+$("#cred-abbrechen").addEventListener("click", zugangFormularLeeren);
+
 $("#cred-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#cred-error").textContent = "";
+  const werte = {
+    label: $("#cred-label").value.trim(),
+    provider: $("#cred-provider").value.trim(),
+    api_base: $("#cred-base").value.trim() || null,
+    auth_style: $("#cred-auth").value,
+    header_name: $("#cred-header").value.trim() || null,
+  };
   try {
-    await api("/api/credentials", {
-      method: "POST",
-      body: JSON.stringify({
-        label: $("#cred-label").value.trim(),
-        provider: $("#cred-provider").value.trim(),
-        api_key: $("#cred-key").value || null,
-        api_base: $("#cred-base").value.trim() || null,
-        auth_style: $("#cred-auth").value,
-        header_name: $("#cred-header").value.trim() || null,
-        extra_json: $("#cred-extra").value.trim() || null,
-        geteilt: $("#cred-geteilt").checked,
-      }),
-    });
-    $("#cred-form").reset();
+    if (ZUGANG_BEARBEITET) {
+      // Leere Felder nicht mitschicken: beim Aendern heisst "nicht dabei"
+      // unveraendert. Sonst wuerde jedes Speichern den Schluessel loeschen.
+      if ($("#cred-key").value) werte.api_key = $("#cred-key").value;
+      if ($("#cred-extra").value.trim()) werte.extra_json = $("#cred-extra").value.trim();
+      await api(`/api/credentials/${ZUGANG_BEARBEITET.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(werte),
+      });
+    } else {
+      werte.api_key = $("#cred-key").value || null;
+      werte.extra_json = $("#cred-extra").value.trim() || null;
+      werte.geteilt = $("#cred-geteilt").checked;
+      await api("/api/credentials", { method: "POST", body: JSON.stringify(werte) });
+    }
+    zugangFormularLeeren();
     await loadCredentials();
   } catch (error) {
     $("#cred-error").textContent = error.message;

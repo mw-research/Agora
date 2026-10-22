@@ -34,6 +34,13 @@ class Muster:
     role: str
     persona: str
     temperature: float
+    # Hoeher als die Vorgabe von 1200: diese Agenten laufen auf dem
+    # Gemeinschaftszugang, also meist auf einem Modell im eigenen Haus -
+    # und wenn das vor dem Antworten denkt, muss beides hineinpassen. Im
+    # Betrieb verdachte Qwen3 1343 Token und kam nie zum Schreiben.
+    # Die Obergrenze ist eine Decke, kein Ziel; wie lang ein Beitrag wird,
+    # steuert der Prompt mit seinen 200 Woertern.
+    max_tokens: int = 4000
 
 
 MUSTER: tuple[Muster, ...] = (

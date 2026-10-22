@@ -254,6 +254,57 @@ async def main_test() -> int:
             assert r.status_code == 201, f"Gast kann sie nicht einsetzen: {r.text}"
             print("[ok] Der Gast startet damit sofort, ohne eigene Persona")
 
+            # --- Einen Zugang aendern ------------------------------------
+            # Das fehlte, und es fiel erst auf, als es gebraucht wurde: fuer
+            # ein Modell mit Reasoning gehoert enable_thinking in die
+            # Zusatzparameter. Ohne PATCH haette man den Zugang loeschen
+            # muessen - was an einem Gemeinschaftszugang mit Agenten daran
+            # zu Recht abgewiesen wird.
+            ZUSATZ = '{"chat_template_kwargs": {"enable_thinking": false}}'
+            r = await c.patch(f"/api/credentials/{zweiter}", headers=A,
+                              json={"extra_json": ZUSATZ,
+                                    "api_base": "http://vllm.intern:8000/v1"})
+            assert r.status_code == 200, r.text
+            assert r.json()["has_extra"] is True, r.json()
+            assert r.json()["api_base"] == "http://vllm.intern:8000/v1", r.json()
+            print("[ok] Zugang geaendert, Zusatzparameter hinterlegt")
+
+            # Der Schluessel bleibt, wenn das Feld leer bleibt. Sonst waere
+            # jede Kleinigkeit ein Neueintippen - und der Schluessel steht
+            # in der Oberflaeche ja nie zum Vorausfuellen bereit.
+            r = await c.patch(f"/api/credentials/{zweiter}", headers=A,
+                              json={"label": "Hausmodell umbenannt"})
+            assert r.status_code == 200 and r.json()["has_key"] is True, r.json()
+            assert r.json()["label"] == "Hausmodell umbenannt", r.json()
+            print("[ok] Ein nicht mitgeschickter Schluessel bleibt erhalten")
+
+            # Und er bleibt lesbar - am richtigen Schluessel.
+            async with SessionLocal() as sitzung:
+                roh = (await sitzung.execute(
+                    select(Credential).where(Credential.id == zweiter)
+                )).scalar_one()
+                assert roh.enc_scheme == "server", roh.enc_scheme
+                assert llm._geheimnis(roh.api_key_enc, roh.enc_scheme, None) == "sk-haus"
+                assert ZUSATZ in llm._geheimnis(roh.extra_json_enc, roh.enc_scheme, None)
+            print("[ok] Schluessel und Zusatz bleiben am Serverschluessel lesbar")
+
+            # Unsinn wird abgewiesen, ein Gast kommt gar nicht heran.
+            r = await c.patch(f"/api/credentials/{zweiter}", headers=A,
+                              json={"extra_json": "kein JSON"})
+            assert r.status_code == 400 and "JSON" in r.text, r.text
+            r = await c.patch(f"/api/credentials/{zweiter}", headers=gast,
+                              json={"label": "meins jetzt"})
+            assert r.status_code == 404, r.text
+            print("[ok] Ungueltiges JSON abgewiesen, Fremde kommen nicht heran")
+
+            # Die Muster-Agenten tragen Platz zum Denken.
+            paar = musteragenten.fuer("code")
+            assert all(m.max_tokens >= 4000 for m in musteragenten.MUSTER), \
+                {m.name: m.max_tokens for m in musteragenten.MUSTER}
+            aufgestellt = {a["name"]: a for a in (await c.get("/api/agents", headers=A)).json()}
+            assert aufgestellt[paar[0].name]["max_tokens"] == paar[0].max_tokens
+            print(f"[ok] Muster-Agenten mit {paar[0].max_tokens} Token aufgestellt")
+
     print("\nALLE TESTS BESTANDEN")
     return 0
 

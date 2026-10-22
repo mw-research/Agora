@@ -68,7 +68,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.39.0"
+APP_VERSION = "0.40.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1127,6 +1127,80 @@ async def create_credential(
     return _credential_out(cred)
 
 
+@app.patch("/api/credentials/{credential_id}", response_model=schemas.CredentialOut)
+async def update_credential(
+    credential_id: str,
+    payload: schemas.CredentialUpdate,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Einen Zugang aendern - Adresse, Anmeldeart, Zusatzparameter, Schluessel.
+
+    Dass das gefehlt hat, faellt erst auf, wenn man es braucht: fuer ein
+    Modell mit Reasoning gehoert enable_thinking in die Zusatzparameter,
+    und ohne diesen Endpunkt haette man den Zugang loeschen muessen - was
+    an einem Gemeinschaftszugang mit Muster-Agenten zu Recht abgewiesen
+    wird.
+    """
+    cred = await session.get(Credential, credential_id)
+    eigener = cred is not None and cred.owner_id == user.id and not cred.geteilt
+    gemeinsam = cred is not None and cred.geteilt and user.is_admin
+    if cred is None or not (eigener or gemeinsam):
+        raise HTTPException(404, "Nicht gefunden")
+
+    werte = payload.model_dump(exclude_unset=True)
+
+    if "auth_style" in werte and werte["auth_style"] not in (
+        "api_key", "bearer", "header", "none"
+    ):
+        raise HTTPException(400, "auth_style muss api_key, bearer, header oder none sein")
+
+    if werte.get("extra_json"):
+        try:
+            geparst = json.loads(werte["extra_json"])
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, f"Zusatzparameter sind kein gueltiges JSON: {exc}") from exc
+        if not isinstance(geparst, dict):
+            raise HTTPException(400, "Zusatzparameter muessen ein JSON-Objekt sein")
+
+    # Zum Verschluesseln braucht es denselben Weg wie beim Anlegen: ein
+    # Gemeinschaftszugang haengt am Serverschluessel, ein persoenlicher an
+    # der PIN seines Besitzers.
+    def verschluesseln(klartext: str) -> str:
+        if cred.geteilt:
+            return server_verschluesseln(klartext)
+        return tresor.zugang_verschluesseln(dk, klartext)
+
+    dk = None
+    braucht_schluessel = any(
+        feld in werte and werte[feld] for feld in ("api_key", "extra_json")
+    )
+    if braucht_schluessel and not cred.geteilt:
+        try:
+            dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
+        except tresor.GesperrtFehler as exc:
+            raise HTTPException(
+                409, f"{exc} Melde dich mit deiner PIN an, dann kannst du den Zugang aendern."
+            ) from exc
+
+    for feld, spalte in (("api_key", "api_key_enc"), ("extra_json", "extra_json_enc")):
+        if feld not in werte:
+            continue
+        wert = werte.pop(feld)
+        # Leer heisst entfernen, ein Wert ersetzt, nicht mitgeschickt bleibt.
+        setattr(cred, spalte, verschluesseln(wert) if wert else None)
+
+    if "provider" in werte:
+        werte["provider"] = werte["provider"].strip().strip("/")
+    for feld, wert in werte.items():
+        setattr(cred, feld, wert or None if feld in ("api_base", "header_name") else wert)
+
+    await session.commit()
+    await session.refresh(cred)
+    log.info("%s hat den Zugang '%s' geaendert", user.name, cred.label)
+    return _credential_out(cred)
+
+
 @app.delete("/api/credentials/{credential_id}", status_code=204)
 async def delete_credential(
     credential_id: str,
@@ -1531,6 +1605,7 @@ async def musteragenten_aufstellen(
                 model=payload.model.strip(),
                 credential_id=cred.id,
                 temperature=muster.temperature,
+                max_tokens=muster.max_tokens,
                 is_public=True,
                 geteilt=True,
             )

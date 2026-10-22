@@ -136,6 +136,29 @@ class CredentialCreate(BaseModel):
     geteilt: JaNein = False
 
 
+class CredentialUpdate(BaseModel):
+    """Was sich an einem Zugang aendern laesst.
+
+    Nicht dabei: geteilt. Der Wechsel zwischen persoenlich und gemeinsam
+    heisst Umschluesseln - vom Datenschluessel der Person auf den
+    Serverschluessel oder zurueck - und das ist kein Nebenbei. Wer das
+    will, legt einen zweiten Zugang an.
+
+    api_key und extra_json unterscheiden drei Faelle: nicht mitgeschickt
+    heisst unveraendert, ein Wert ersetzt, und eine leere Zeichenkette
+    entfernt. Ohne diese Unterscheidung muesste man den Schluessel bei
+    jeder Kleinigkeit neu eintippen.
+    """
+
+    label: str | None = Field(default=None, min_length=1, max_length=80)
+    provider: str | None = Field(default=None, min_length=1, max_length=40)
+    api_key: str | None = None
+    api_base: str | None = Field(default=None, max_length=300)
+    auth_style: str | None = Field(default=None, max_length=20)
+    header_name: str | None = Field(default=None, max_length=80)
+    extra_json: str | None = None
+
+
 class CredentialOut(ORMModel):
     id: str
     label: str

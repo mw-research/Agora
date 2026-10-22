@@ -183,7 +183,7 @@
       </div>
 
       <form id="cred-form" class="card">
-        <h2 data-i18n="zugang.titel"></h2>
+        <h2 id="cred-form-titel" data-i18n="zugang.titel"></h2>
         <p class="muted" data-i18n-html="zugang.hinweis"></p>
         <div class="grid2">
           <label data-i18n="zugang.bezeichnung">
@@ -227,7 +227,14 @@
         </label>
         <p class="muted" id="cred-geteilt-hinweis" hidden
            data-i18n="zugang.fuerAlleHinweis"></p>
-        <button type="submit" class="primary" data-i18n="zugang.speichern"></button>
+        <div class="row">
+          <button type="submit" class="primary" id="cred-speichern"
+                  data-i18n="zugang.speichern"></button>
+          <button type="button" id="cred-abbrechen" hidden
+                  data-i18n="allgemein.abbrechen"></button>
+        </div>
+        <p class="muted" id="cred-schluessel-hinweis" hidden
+           data-i18n="zugang.schluesselBleibt"></p>
         <p class="error" id="cred-error"></p>
       </form>
       <div id="cred-list" class="card-list"></div>

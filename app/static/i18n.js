@@ -228,6 +228,10 @@ const TEXTE = {
     "zugang.fuerAlleHinweis":
       "Damit lassen sich Muster-Agenten aufstellen, die jeder benutzen darf. Der Schlüssel liegt dann am Serverschlüssel statt an deiner PIN – sonst stünden alle still, sobald du dich abmeldest. Das heißt aber auch: wer Datenbank und AGORA_SECRET_KEY hat, liest ihn. Für ein Modell im eigenen Haus richtig, für einen bezahlten Schlüssel beim Anbieter nicht.",
     "zugang.fuerAlleMarke": "für alle",
+    "zugang.bearbeiten": "Bearbeiten",
+    "zugang.bearbeitenTitel": "„{name}“ bearbeiten",
+    "zugang.schluesselBleibt":
+      "Schlüssel und Zusatzparameter bleiben, was sie sind, solange du die Felder leer lässt – sie verlassen den Server nie und können deshalb nicht vorausgefüllt werden.",
     "agent.musterAgent": "Muster-Agent für alle",
     "agent.musterMarke": "Muster",
     "muster.titel": "Mitgelieferte Muster-Agenten aufstellen",
@@ -623,6 +627,10 @@ const TEXTE = {
     "zugang.fuerAlleHinweis":
       "This is what template agents run on, and anyone may use them. The key then sits under the server key rather than your PIN \u2013 otherwise they would all stop the moment you sign out. It also means whoever has the database and AGORA_SECRET_KEY can read it. Right for a model in your own house, wrong for a paid key at a provider.",
     "zugang.fuerAlleMarke": "shared",
+    "zugang.bearbeiten": "Edit",
+    "zugang.bearbeitenTitel": "Edit \u201c{name}\u201d",
+    "zugang.schluesselBleibt":
+      "Key and extra parameters stay as they are while you leave the fields empty \u2013 they never leave the server, so they cannot be filled in for you.",
     "agent.musterAgent": "Template agent for everyone",
     "agent.musterMarke": "template",
     "muster.titel": "Set up the bundled template agents",
@@ -1016,6 +1024,10 @@ const TEXTE = {
     "zugang.fuerAlleHinweis":
       "На нём работают образцовые агенты, которыми может пользоваться любой. Ключ тогда лежит под серверным ключом, а не под вашим PIN — иначе все они остановятся, как только вы выйдете. Но это значит и другое: у кого есть база и AGORA_SECRET_KEY, тот его прочитает. Для своей модели в доме это верно, для платного ключа у провайдера — нет.",
     "zugang.fuerAlleMarke": "общий",
+    "zugang.bearbeiten": "Изменить",
+    "zugang.bearbeitenTitel": "Изменить «{name}»",
+    "zugang.schluesselBleibt":
+      "Ключ и дополнительные параметры останутся прежними, пока поля пусты — они никогда не покидают сервер и потому не подставляются.",
     "agent.musterAgent": "Образцовый агент для всех",
     "agent.musterMarke": "образец",
     "muster.titel": "Поставить образцовых агентов из поставки",
