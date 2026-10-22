@@ -85,7 +85,15 @@ class Settings(BaseSettings):
 
     max_rounds_hard: int = 200
     max_context_posts: int = 40
-    request_timeout: int = 180
+    # Reichlich bemessen, und das mit Absicht: ein Modell mit Reasoning
+    # denkt erst und schreibt dann, und beides zusammen passt bei 180
+    # Sekunden nicht mehr hinein. Was man dabei gewinnt, ist nichts - ein
+    # Aufruf, der frueher fertig ist, ist frueher fertig; die Grenze greift
+    # nur im Fehlerfall. Was man verliert, wenn sie zu knapp sitzt, ist der
+    # ganze Zug: der Agent faellt aus, und bei drei Ausfaellen pausiert die
+    # Diskussion. Wer einen haengenden Anbieter schnell bemerken will,
+    # setzt sie herunter.
+    request_timeout: int = 600
 
     @property
     def is_postgres(self) -> bool:

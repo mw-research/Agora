@@ -68,7 +68,7 @@ log = logging.getLogger("agora")
 
 # Sichtbar unter /healthz - damit man ohne Anmeldung pruefen kann, welcher
 # Stand tatsaechlich laeuft.
-APP_VERSION = "0.40.0"
+APP_VERSION = "0.41.0"
 COOKIE_NAME = "agora_token"
 # So lange gilt ein Einmal-Token. Kurz gehalten: es geht durch fremde Haende
 # (Mail, Chat) und soll nicht tagelang herumliegen.
@@ -1201,6 +1201,78 @@ async def update_credential(
     return _credential_out(cred)
 
 
+@app.post(
+    "/api/credentials/{credential_id}/kopie",
+    response_model=schemas.CredentialOut,
+    status_code=201,
+)
+async def copy_credential(
+    credential_id: str,
+    payload: schemas.CredentialKopie,
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Denselben Zugang noch einmal, nur mit anderen Zusatzparametern.
+
+    Gebraucht wird das fuer genau eine Sache: dieselbe Adresse, dasselbe
+    Modell, einmal mit Reasoning und einmal ohne. Denn die Zusatzparameter
+    haengen am Zugang, der Agent aber waehlt den Zugang - also lassen sich
+    beide Betriebsarten nebeneinander stellen, sobald es zwei Zugaenge
+    gibt.
+
+    Der Schluessel wird dabei NICHT entschluesselt: sein Geheimtext wandert
+    unveraendert mit, weil die Kopie demselben Besitzer gehoert und am
+    selben Verfahren haengt. Das ist nicht nur bequemer als neu eintippen,
+    es ist auch besser - der Schluessel muss dafuer niemandem vorliegen.
+    """
+    cred = await session.get(Credential, credential_id)
+    eigener = cred is not None and cred.owner_id == user.id and not cred.geteilt
+    gemeinsam = cred is not None and cred.geteilt and user.is_admin
+    if cred is None or not (eigener or gemeinsam):
+        raise HTTPException(404, "Nicht gefunden")
+
+    if payload.extra_json:
+        try:
+            geparst = json.loads(payload.extra_json)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(400, f"Zusatzparameter sind kein gueltiges JSON: {exc}") from exc
+        if not isinstance(geparst, dict):
+            raise HTTPException(400, "Zusatzparameter muessen ein JSON-Objekt sein")
+
+    # Die Zusatzparameter sind neu und muessen deshalb verschluesselt
+    # werden - und zwar nach demselben Verfahren wie das Original, sonst
+    # passten Schluessel und Zusatz der Kopie nicht mehr zusammen.
+    extra_enc = None
+    if payload.extra_json:
+        if cred.enc_scheme == "user":
+            try:
+                dk = tresor.abholen(user.dk_unlocked, user.unlocked_until)
+            except tresor.GesperrtFehler as exc:
+                raise HTTPException(
+                    409, f"{exc} Melde dich mit deiner PIN an, dann kannst du kopieren."
+                ) from exc
+            extra_enc = tresor.zugang_verschluesseln(dk, payload.extra_json)
+        else:
+            extra_enc = server_verschluesseln(payload.extra_json)
+
+    kopie = Credential(
+        owner_id=cred.owner_id,
+        label=payload.label,
+        provider=cred.provider,
+        api_key_enc=cred.api_key_enc,
+        api_base=cred.api_base,
+        auth_style=cred.auth_style,
+        header_name=cred.header_name,
+        extra_json_enc=extra_enc,
+        enc_scheme=cred.enc_scheme,
+        geteilt=cred.geteilt,
+    )
+    session.add(kopie)
+    await session.commit()
+    log.info("%s hat den Zugang '%s' als '%s' kopiert", user.name, cred.label, kopie.label)
+    return _credential_out(kopie)
+
+
 @app.delete("/api/credentials/{credential_id}", status_code=204)
 async def delete_credential(
     credential_id: str,
@@ -1585,6 +1657,20 @@ async def musteragenten_aufstellen(
             "sobald dein Freischaltfenster ablaeuft.",
         )
 
+    # Optional ein zweiter Zugang fuer die Agenten, deren Arbeit eine Kette
+    # ist statt eines Urteils. Fehlt er, laufen alle zwoelf auf dem ersten.
+    denk_cred, denk_modell = cred, payload.model.strip()
+    if payload.credential_denken_id:
+        denk_cred = await session.get(Credential, payload.credential_denken_id)
+        if denk_cred is None or not denk_cred.geteilt:
+            raise HTTPException(
+                400,
+                "Auch der zweite Zugang muss einer fuer alle sein - sonst "
+                "stuenden die Haelfte der Muster-Agenten still, sobald dein "
+                "Freischaltfenster ablaeuft.",
+            )
+        denk_modell = (payload.model_denken or payload.model).strip()
+
     vorhanden = {
         name
         for (name,) in (
@@ -1602,8 +1688,8 @@ async def musteragenten_aufstellen(
                 name=muster.name,
                 role=muster.role,
                 persona=muster.persona,
-                model=payload.model.strip(),
-                credential_id=cred.id,
+                model=denk_modell if muster.denkt else payload.model.strip(),
+                credential_id=(denk_cred if muster.denkt else cred).id,
                 temperature=muster.temperature,
                 max_tokens=muster.max_tokens,
                 is_public=True,

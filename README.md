@@ -615,7 +615,7 @@ put this in the credential's extra parameters to switch thinking off,
 ```
 
 or raise the agent's *Max. Tokens* so there is room for both. A whole-request
-timeout is `AGORA_REQUEST_TIMEOUT` (180 seconds by default); for a local model
+timeout is `AGORA_REQUEST_TIMEOUT` (600 seconds by default); for a local model
 answering several agents at once, that can be too short, because the requests
 queue.
 
@@ -698,6 +698,43 @@ trade. For a paid key at a provider it is not, and the dialog says so.
 
 Deleting goes in order: a shared credential with agents still on it is
 refused, with a count, rather than leaving them without a model.
+
+### Reasoning, and the two credentials it takes
+
+A model that reasons before it answers writes its thinking into
+`reasoning_content`. Agora throws that away — only the answer belongs in the
+discussion — but the tokens are spent all the same, and they are spent first.
+A budget of 1200 tokens is right for a model that answers and far too small
+for one that thinks: Qwen3 on vLLM spent 1343 of them thinking and was cut off
+before writing a word. The post arrived empty. That is why the bundled agents
+are set up with 4000.
+
+Turning the thinking off is the other lever, and it costs something. The gap
+between the two modes is wide where one step builds on the last — deriving,
+recomputing, following a path to its end — and close to nothing where the job
+is to judge and to phrase. Five of the twelve do the first kind of work
+(*Nachrechnen*, *Gegenbeispiel*, *Methodenkritik*, *Umsetzung*, *Fehlersuche*,
+marked `denkt=True` in `app/musteragenten.py`); the other seven do the second.
+
+The awkward part is that the switch lives on the credential, not on the agent:
+it goes into the extra LiteLLM parameters, for example
+`{"chat_template_kwargs": {"enable_thinking": false}}`. So running both modes
+at once takes the same credential twice. Under *Models* each credential has a
+**Copy** button for exactly that: label and extra parameters are yours to set,
+everything else — key included — is carried over as ciphertext and never
+decrypted on the way. Then, when putting up the bundled agents, name the
+second credential in the optional field and the five checkers go on it while
+the other seven stay on the first.
+
+None of this is required. Leave the field empty and all twelve run on one
+credential, which is the right answer for a model that does not reason at all.
+
+One setting pulls against this: `AGORA_REQUEST_TIMEOUT`. Thinking first and
+answering afterwards takes longer than answering, and too tight a limit trades
+a truncated post for a failed one. The default is 600 seconds. Nothing is won
+by keeping it low — a call that finishes early finishes early, the limit only
+bites on failure — so lower it only if you want a hung provider reported
+quickly.
 
 ### Giving one agent its own material
 

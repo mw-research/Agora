@@ -162,6 +162,16 @@
             <input id="muster-modell" maxlength="160" placeholder="openai/llama-3.3-70b">
           </label>
         </div>
+        <p class="muted" data-i18n="muster.denkerHinweis"></p>
+        <div class="grid2">
+          <label data-i18n="muster.zugangDenken">
+            <select id="muster-zugang-denken"><option value=""></option></select>
+          </label>
+          <label data-i18n="muster.modellDenken">
+            <input id="muster-modell-denken" maxlength="160"
+                   data-i18n-ph="muster.modellDenkenPh">
+          </label>
+        </div>
         <div class="row">
           <button type="button" id="muster-aufstellen" data-i18n="muster.aufstellen"></button>
           <span class="muted" id="muster-stand"></span>
@@ -197,7 +207,7 @@
             </datalist>
           </label>
         </div>
-        <div class="grid2">
+        <div class="grid2" id="cred-key-zeile">
           <label data-i18n="zugang.schluessel">
             <input id="cred-key" type="password" autocomplete="off">
           </label>
@@ -235,6 +245,8 @@
         </div>
         <p class="muted" id="cred-schluessel-hinweis" hidden
            data-i18n="zugang.schluesselBleibt"></p>
+        <p class="muted" id="cred-kopie-hinweis" hidden
+           data-i18n="zugang.kopieHinweis"></p>
         <p class="error" id="cred-error"></p>
       </form>
       <div id="cred-list" class="card-list"></div>

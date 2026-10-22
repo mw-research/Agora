@@ -128,7 +128,7 @@ function verstecke(kennung, verborgen) {
 
 // Die Fassung, zu der dieses Skript gehoert. Stimmt sie nicht mit der des
 // Servers ueberein, liegt hier etwas Altes im Zwischenspeicher.
-const OBERFLAECHE_VERSION = "0.40.0";
+const OBERFLAECHE_VERSION = "0.41.0";
 
 /** Sagen, dass die Seite veraltet ist - und wie man das behebt.
  *
@@ -2088,6 +2088,9 @@ async function loadCredentials() {
   // Fuer die Muster-Agenten kommen nur Gemeinschaftszugaenge in Frage.
   const musterWahl = $("#muster-zugang");
   if (musterWahl) musterWahl.innerHTML = "";
+  // Der zweite ist freiwillig, deshalb steht dort ein leerer Eintrag oben.
+  const denkWahl = $("#muster-zugang-denken");
+  if (denkWahl) denkWahl.innerHTML = '<option value=""></option>';
 
   for (const credential of credentials) {
     const option = document.createElement("option");
@@ -2100,6 +2103,7 @@ async function loadCredentials() {
       fuerMuster.value = credential.id;
       fuerMuster.textContent = `${credential.label} (${credential.provider})`;
       musterWahl.appendChild(fuerMuster);
+      if (denkWahl) denkWahl.appendChild(fuerMuster.cloneNode(true));
     }
 
     const card = document.createElement("div");
@@ -2127,6 +2131,14 @@ async function loadCredentials() {
       aendern.textContent = t("zugang.bearbeiten");
       aendern.addEventListener("click", () => zugangBearbeiten(credential));
       card.appendChild(aendern);
+
+      // Kopieren gibt es, weil Zusatzparameter am Zugang haengen und nicht
+      // am Agenten: wer dasselbe Modell einmal mit und einmal ohne
+      // Reasoning fahren will, braucht denselben Zugang zweimal.
+      const kopieren = document.createElement("button");
+      kopieren.textContent = t("zugang.kopieren");
+      kopieren.addEventListener("click", () => zugangKopieren(credential));
+      card.appendChild(kopieren);
     }
     if (credential.geteilt ? ME.is_admin : meiner) {
       const remove = document.createElement("button");
@@ -2165,9 +2177,17 @@ async function musterAufstellen() {
   }
   $("#muster-stand").textContent = t("muster.laeuft");
   try {
+    const anfrage = { credential_id: zugang, model: modell };
+    // Der zweite Zugang ist freiwillig. Ohne ihn laufen alle zwoelf auf
+    // dem ersten, und das Formularfeld hat niemandem geschadet.
+    const denkZugang = $("#muster-zugang-denken").value;
+    if (denkZugang) {
+      anfrage.credential_denken_id = denkZugang;
+      anfrage.model_denken = $("#muster-modell-denken").value.trim() || null;
+    }
     const bericht = await api("/api/admin/musteragenten", {
       method: "POST",
-      body: JSON.stringify({ credential_id: zugang, model: modell }),
+      body: JSON.stringify(anfrage),
     });
     $("#muster-stand").textContent = bericht.aufgestellt.length
       ? t("muster.fertig", { anzahl: bericht.aufgestellt.length })
@@ -2190,25 +2210,61 @@ $("#cred-auth").addEventListener("change", (event) => {
 
 // Welchen Zugang das Formular gerade bearbeitet - leer heisst: neuer.
 let ZUGANG_BEARBEITET = null;
+// Und von welchem es gerade eine Kopie anlegt. Immer nur eins von beiden.
+let ZUGANG_KOPIERT = null;
+
+// Beim Kopieren sind Provider, Adresse und Anmeldeart nicht zu haben: sie
+// kommen vom Original, und wer sie aendern will, legt einen neuen Zugang
+// an. Sie stehen trotzdem da - man soll sehen, was man kopiert.
+const UEBERNOMMEN = ["#cred-provider", "#cred-base", "#cred-auth", "#cred-header"];
 
 function zeichneZugangFormular() {
   const titel = $("#cred-form-titel");
   if (!titel) return;
-  if (ZUGANG_BEARBEITET) {
+  if (ZUGANG_KOPIERT) {
+    titel.textContent = t("zugang.kopierenTitel", { name: ZUGANG_KOPIERT.label });
+    $("#cred-speichern").textContent = t("zugang.kopieAnlegen");
+  } else if (ZUGANG_BEARBEITET) {
     titel.textContent = t("zugang.bearbeitenTitel", { name: ZUGANG_BEARBEITET.label });
     $("#cred-speichern").textContent = t("agent.uebernehmen");
   } else {
     titel.textContent = t("zugang.titel");
     $("#cred-speichern").textContent = t("zugang.speichern");
   }
-  verstecke("#cred-abbrechen", !ZUGANG_BEARBEITET);
+  const offen = !ZUGANG_BEARBEITET && !ZUGANG_KOPIERT;
+  verstecke("#cred-abbrechen", offen);
   verstecke("#cred-schluessel-hinweis", !ZUGANG_BEARBEITET);
+  verstecke("#cred-kopie-hinweis", !ZUGANG_KOPIERT);
+  // Beim Kopieren wandert der Schluessel als Geheimtext mit - es gibt dort
+  // nichts einzutippen, und vorfuellen koennte man ihn ohnehin nicht.
+  verstecke("#cred-key-zeile", Boolean(ZUGANG_KOPIERT));
+  for (const feld of UEBERNOMMEN) $(feld).disabled = Boolean(ZUGANG_KOPIERT);
+  if (!ZUGANG_KOPIERT) $("#cred-header").disabled = $("#cred-auth").value !== "header";
   // Ein Zugang fuer alle bleibt einer - der Wechsel hiesse umschluesseln.
-  verstecke("#cred-geteilt-zeile", !ME.is_admin || Boolean(ZUGANG_BEARBEITET));
-  verstecke("#cred-geteilt-hinweis", !ME.is_admin || Boolean(ZUGANG_BEARBEITET));
+  // Die Kopie erbt ihn vom Original, also auch dort kein Haekchen.
+  verstecke("#cred-geteilt-zeile", !ME.is_admin || !offen);
+  verstecke("#cred-geteilt-hinweis", !ME.is_admin || !offen);
+}
+
+function zugangKopieren(credential) {
+  ZUGANG_BEARBEITET = null;
+  ZUGANG_KOPIERT = credential;
+  $("#cred-label").value = t("zugang.kopieName", { name: credential.label });
+  $("#cred-provider").value = credential.provider;
+  $("#cred-base").value = credential.api_base || "";
+  $("#cred-auth").value = credential.auth_style || "api_key";
+  $("#cred-header").value = credential.header_name || "";
+  // Leer, und das ist der Zweck: die Kopie soll andere Zusatzparameter
+  // bekommen als das Original.
+  $("#cred-extra").value = "";
+  $("#cred-error").textContent = "";
+  zeichneZugangFormular();
+  $("#cred-form").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#cred-extra").focus();
 }
 
 function zugangBearbeiten(credential) {
+  ZUGANG_KOPIERT = null;
   ZUGANG_BEARBEITET = credential;
   $("#cred-label").value = credential.label;
   $("#cred-provider").value = credential.provider;
@@ -2228,7 +2284,9 @@ function zugangBearbeiten(credential) {
 
 function zugangFormularLeeren() {
   ZUGANG_BEARBEITET = null;
+  ZUGANG_KOPIERT = null;
   $("#cred-form").reset();
+  for (const feld of UEBERNOMMEN) $(feld).disabled = false;
   $("#cred-header").disabled = true;
   $("#cred-error").textContent = "";
   zeichneZugangFormular();
@@ -2247,7 +2305,17 @@ $("#cred-form").addEventListener("submit", async (event) => {
     header_name: $("#cred-header").value.trim() || null,
   };
   try {
-    if (ZUGANG_BEARBEITET) {
+    if (ZUGANG_KOPIERT) {
+      // Nur Bezeichnung und Zusatzparameter: alles andere, den Schluessel
+      // eingeschlossen, uebernimmt der Server unveraendert vom Original.
+      await api(`/api/credentials/${ZUGANG_KOPIERT.id}/kopie`, {
+        method: "POST",
+        body: JSON.stringify({
+          label: werte.label,
+          extra_json: $("#cred-extra").value.trim() || null,
+        }),
+      });
+    } else if (ZUGANG_BEARBEITET) {
       // Leere Felder nicht mitschicken: beim Aendern heisst "nicht dabei"
       // unveraendert. Sonst wuerde jedes Speichern den Schluessel loeschen.
       if ($("#cred-key").value) werte.api_key = $("#cred-key").value;

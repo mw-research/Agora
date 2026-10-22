@@ -136,6 +136,26 @@ class CredentialCreate(BaseModel):
     geteilt: JaNein = False
 
 
+class CredentialKopie(BaseModel):
+    """Denselben Zugang noch einmal, mit anderen Zusatzparametern.
+
+    Wofuer: ein Modell mit Reasoning laesst sich ueber die Zusatzparameter
+    zum Denken bringen oder davon abhalten - aber die haengen am Zugang und
+    nicht am Agenten. Wer beides braucht, braucht zwei Zugaenge auf
+    dieselbe Adresse.
+
+    Den Schluessel dafuer noch einmal einzutippen waere nicht nur laestig,
+    sondern schlechter: er muesste dazu erst wieder jemandem vorliegen.
+    Deshalb wird hier der Geheimtext unveraendert uebernommen - derselbe
+    Schluessel, dasselbe Verfahren, nichts wird unterwegs entschluesselt.
+    """
+
+    label: str = Field(min_length=1, max_length=80)
+    # Leer heisst: ohne Zusatzparameter - und das ist der Normalfall, denn
+    # der Zweck der Kopie ist ja gerade, andere zu setzen als das Original.
+    extra_json: str | None = None
+
+
 class CredentialUpdate(BaseModel):
     """Was sich an einem Zugang aendern laesst.
 
@@ -211,6 +231,15 @@ class MusterAnfrage(BaseModel):
 
     credential_id: str = Field(min_length=1, max_length=32)
     model: str = Field(min_length=1, max_length=160)
+
+    # Optional ein zweiter Zugang fuer die fuenf Agenten, deren Arbeit eine
+    # Kette ist statt eines Urteils (siehe Muster.denkt). Gedacht fuer den
+    # Fall, dass auf dem einen Zugang das Reasoning abgeschaltet ist und auf
+    # dem anderen nicht. Fehlt er, laufen alle zwoelf auf dem ersten - und
+    # das soll so bleiben, denn mit einem Modell ohne Reasoning waere die
+    # Unterscheidung nur ein Formularfeld mehr.
+    credential_denken_id: str | None = Field(default=None, max_length=32)
+    model_denken: str | None = Field(default=None, max_length=160)
 
 
 class MusterBericht(BaseModel):

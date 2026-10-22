@@ -63,7 +63,7 @@ data:
   # mehr anschaut und trotzdem Tokens verbrennt.
   AGORA_MAX_ROUNDS_HARD: '200'
   AGORA_MAX_CONTEXT_POSTS: '40'
-  AGORA_REQUEST_TIMEOUT: '180'
+  AGORA_REQUEST_TIMEOUT: '600'
 ---
 apiVersion: v1
 kind: Service

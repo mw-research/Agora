@@ -22,11 +22,11 @@ os.environ["AGORA_WORKER_ENABLED"] = "true"
 os.environ["AGORA_WORKER_INTERVAL"] = "0.2"
 
 import httpx  # noqa: E402
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import delete, select  # noqa: E402
 
 from app import llm, main, musteragenten, pruefarten  # noqa: E402
 from app.db import SessionLocal  # noqa: E402
-from app.models import Credential  # noqa: E402
+from app.models import Agent, Credential  # noqa: E402
 
 GERUFEN: list[str] = []
 
@@ -304,6 +304,96 @@ async def main_test() -> int:
             aufgestellt = {a["name"]: a for a in (await c.get("/api/agents", headers=A)).json()}
             assert aufgestellt[paar[0].name]["max_tokens"] == paar[0].max_tokens
             print(f"[ok] Muster-Agenten mit {paar[0].max_tokens} Token aufgestellt")
+
+            # --- Denselben Zugang zweimal --------------------------------
+            # Die Zusatzparameter haengen am Zugang, der Agent waehlt den
+            # Zugang: also laesst sich dasselbe Modell einmal mit und einmal
+            # ohne Reasoning fahren, sobald es den Zugang zweimal gibt. Den
+            # Schluessel dafuer neu eintippen zu muessen waere nicht nur
+            # laestig - er muesste dazu erst wieder jemandem vorliegen.
+            OHNE = '{"chat_template_kwargs": {"enable_thinking": false}}'
+            r = await c.post(f"/api/credentials/{zweiter}/kopie", headers=A,
+                             json={"label": "Hausmodell ohne Denken",
+                                   "extra_json": OHNE})
+            assert r.status_code == 201, r.text
+            kopie = r.json()
+            assert kopie["id"] != zweiter
+            assert kopie["has_key"] is True and kopie["has_extra"] is True, kopie
+            assert kopie["geteilt"] is True, kopie
+            assert kopie["api_base"] == "http://vllm.intern:8000/v1", kopie
+            print("[ok] Zugang kopiert, Schluessel ohne Eintippen uebernommen")
+
+            # Derselbe Schluessel, nicht nur derselbe Anschein - und die
+            # Kopie traegt die neuen Zusatzparameter, nicht die alten.
+            async with SessionLocal() as sitzung:
+                roh = (await sitzung.execute(
+                    select(Credential).where(Credential.id == kopie["id"])
+                )).scalar_one()
+                assert roh.enc_scheme == "server", roh.enc_scheme
+                assert llm._geheimnis(roh.api_key_enc, roh.enc_scheme, None) == "sk-haus"
+                assert llm._geheimnis(roh.extra_json_enc, roh.enc_scheme, None) == OHNE
+            print("[ok] Die Kopie laeuft auf demselben Schluessel")
+
+            r = await c.post(f"/api/credentials/{zweiter}/kopie", headers=A,
+                             json={"label": "Unsinn", "extra_json": "kein JSON"})
+            assert r.status_code == 400 and "JSON" in r.text, r.text
+            r = await c.post(f"/api/credentials/{zweiter}/kopie", headers=gast,
+                             json={"label": "meins jetzt"})
+            assert r.status_code == 404, r.text
+            print("[ok] Ungueltiges JSON abgewiesen, Fremde kopieren nicht")
+
+            # --- Und die Muster auf beide verteilt ------------------------
+            # Fuenf der zwoelf leiten her oder rechnen nach; nur die gewinnen
+            # durch das Denken des Modells genug, um die Wartezeit wert zu
+            # sein. Die stehen auf dem einen Zugang, die uebrigen sieben auf
+            # dem anderen.
+            denker = {m.name for m in musteragenten.MUSTER if m.denkt}
+            assert denker, "kein einziger Muster-Agent braucht Reasoning?"
+            assert len(denker) < len(musteragenten.MUSTER),                 "wenn alle denken, ist die Unterscheidung nur ein Formularfeld"
+
+            async with SessionLocal() as sitzung:
+                await sitzung.execute(delete(Agent).where(Agent.geteilt.is_(True)))
+                await sitzung.commit()
+
+            r = await c.post("/api/admin/musteragenten", headers=A,
+                             json={"credential_id": kopie["id"],
+                                   "model": "openai/schnell",
+                                   "credential_denken_id": zweiter,
+                                   "model_denken": "openai/gruendlich"})
+            assert r.status_code == 200, r.text
+            assert len(r.json()["aufgestellt"]) == len(musteragenten.MUSTER), r.json()
+
+            gestellt = {a["name"]: a for a in (await c.get("/api/agents", headers=A)).json()
+                        if a["geteilt"]}
+            for m in musteragenten.MUSTER:
+                a_ = gestellt[m.name]
+                erwartet = zweiter if m.denkt else kopie["id"]
+                assert a_["credential_id"] == erwartet, (m.name, m.denkt, a_)
+                assert a_["model"] == ("openai/gruendlich" if m.denkt else "openai/schnell"), a_
+            print(f"[ok] {len(denker)} Denker auf dem einen, "
+                  f"{len(musteragenten.MUSTER) - len(denker)} auf dem anderen Zugang")
+
+            # Ohne zweiten Zugang bleibt alles beim Alten - sonst waere das
+            # Feld eine Pflicht, und mit einem Modell ohne Reasoning haette
+            # es gar keinen Sinn.
+            async with SessionLocal() as sitzung:
+                await sitzung.execute(delete(Agent).where(Agent.geteilt.is_(True)))
+                await sitzung.commit()
+            r = await c.post("/api/admin/musteragenten", headers=A,
+                             json={"credential_id": zweiter, "model": "openai/eins"})
+            assert r.status_code == 200, r.text
+            gestellt = {a["name"]: a for a in (await c.get("/api/agents", headers=A)).json()
+                        if a["geteilt"]}
+            assert {a["credential_id"] for a in gestellt.values()} == {zweiter}, gestellt
+            print("[ok] Ohne zweiten Zugang laufen alle zwoelf auf dem ersten")
+
+            # Ein persoenlicher Zugang taugt auch als zweiter nicht: er
+            # stuende still, sobald das Freischaltfenster ablaeuft.
+            r = await c.post("/api/admin/musteragenten", headers=A,
+                             json={"credential_id": zweiter, "model": "openai/x",
+                                   "credential_denken_id": privat})
+            assert r.status_code == 400 and "fuer alle" in r.text, r.text
+            print("[ok] Auch der zweite Zugang muss einer fuer alle sein")
 
     print("\nALLE TESTS BESTANDEN")
     return 0

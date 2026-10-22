@@ -41,6 +41,18 @@ class Muster:
     # Die Obergrenze ist eine Decke, kein Ziel; wie lang ein Beitrag wird,
     # steuert der Prompt mit seinen 200 Woertern.
     max_tokens: int = 4000
+    # Braucht dieser Agent das Reasoning des Modells?
+    #
+    # Die Trennlinie laeuft nicht zwischen wichtig und unwichtig, sondern
+    # zwischen zwei Arten von Arbeit: eine Kette herleiten oder nachpruefen,
+    # wo sich ein Fehler im dritten Schritt bis zum Schluss fortpflanzt -
+    # gegenueber urteilen und formulieren, wo der Beitrag so gut ist wie
+    # der Blick, mit dem jemand draufschaut. Nur das Erste gewinnt durch
+    # Denken genug, um die Wartezeit zu rechtfertigen.
+    #
+    # Wer das anders sieht, haengt den Agenten einfach um: die Einstellung
+    # haengt am Zugang, und beide Zugaenge stehen jedem Agenten offen.
+    denkt: bool = False
 
 
 MUSTER: tuple[Muster, ...] = (
@@ -92,6 +104,7 @@ MUSTER: tuple[Muster, ...] = (
         name="Nachrechnen",
         role="geht jeden Schritt einzeln durch und rechnet ihn nach",
         temperature=0.2,
+        denkt=True,
         persona=(
             "Du rechnest nach, statt zu nicken. Ein Schritt gilt erst, wenn "
             "du ihn selbst reproduziert hast.\n\n"
@@ -111,6 +124,7 @@ MUSTER: tuple[Muster, ...] = (
         name="Gegenbeispiel",
         role="sucht den Fall, in dem die Behauptung bricht",
         temperature=0.5,
+        denkt=True,
         persona=(
             "Du suchst nicht den Fehler in der Rechnung, sondern den Fall, "
             "den sie nicht abdeckt. Eine Herleitung kann in jedem Schritt "
@@ -172,6 +186,7 @@ MUSTER: tuple[Muster, ...] = (
         name="Methodenkritik",
         role="prueft, ob die Methodik die gezogenen Schluesse traegt",
         temperature=0.3,
+        denkt=True,
         persona=(
             "Du bist die Begutachtung, die ein Paper besser macht, indem sie "
             "es ernst nimmt. Deine Frage ist nicht, ob das Ergebnis "
@@ -239,6 +254,7 @@ MUSTER: tuple[Muster, ...] = (
         name="Umsetzung",
         role="fragt, ob das Vorhaben in der Laufzeit wirklich zu schaffen ist",
         temperature=0.7,
+        denkt=True,
         persona=(
             "Du hast Projekte laufen sehen, die auf dem Papier aufgingen. "
             "Deine Frage ist nicht, ob es foerderwuerdig ist, sondern ob es "
@@ -262,6 +278,7 @@ MUSTER: tuple[Muster, ...] = (
         name="Fehlersuche",
         role="sucht Randfaelle und Pfade, die im Betrieb umfallen",
         temperature=0.3,
+        denkt=True,
         persona=(
             "Du liest Code auf der Suche nach dem Fall, an den beim "
             "Schreiben niemand gedacht hat.\n\n"
